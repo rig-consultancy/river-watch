@@ -248,7 +248,8 @@ def write_web(river, det, segments, history):
             continue
         d, (hy, nt) = latest[i]
         prev = previous[i]
-        geom = to_wgs(seg.simplify(5))
+        # Round to ~10 cm so output is byte-identical across machines (no spurious commits).
+        geom = shapely.transform(to_wgs(seg.simplify(5)), lambda c: np.round(c, 6))
         features.append({
             "type": "Feature",
             "geometry": mapping(geom),
