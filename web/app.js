@@ -1,7 +1,7 @@
 // River Watch dashboard. Reads data/index.json and data/<river>.json written by the pipeline.
 
 const BINS = [5, 15, 30, 50]; // hyacinth % thresholds; below the first is "clear"
-const GAP_DAYS = 45; // longer gaps between clear images break the chart line
+const GAP_DAYS = 21; // longer gaps between readings break the chart line (clear dates are 3-10 days apart)
 const tip = document.getElementById("tip");
 const $ = (id) => document.getElementById(id);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -221,11 +221,16 @@ function drawDetail() {
 }
 
 // ---------- line chart ----------
-// layers: [{name, cls, rows, key, tip}] sharing one % axis; the first layer is the primary
-// series (area fill). A legend is shown when there is more than one layer.
+// layers: [{name, cls, rows, key, tip, gap}] sharing one % axis; the first layer is the primary
+// series (area fill). A legend is shown when there is more than one layer. gap: days between
+// readings that break the line (default GAP_DAYS).
 function lineChart(el, layers, label) {
-  const toPts = (l) => l.rows.filter((s) => s[l.key] != null).map((s) => ({ t: toT(s.date), v: s[l.key], d: s }));
-  const L = layers.map((l) => ({ ...l, pts: toPts(l) })).filter((l) => l.pts.length);
+  // Keep missing readings (null) as markers so the line breaks there instead of bridging them.
+  const toAll = (l) => l.rows.map((s) => ({ t: toT(s.date), v: s[l.key], d: s }));
+  const L = layers.map((l) => {
+    const all = toAll(l);
+    return { ...l, all, pts: all.filter((p) => p.v != null) };
+  }).filter((l) => l.pts.length);
   const legend = L.length > 1
     ? `<div class="chart-legend">${L.map((l) => `<span><i class="key ${l.cls}"></i>${l.name}</span>`).join("")}</div>` : "";
   const W = el.clientWidth, H = el.clientHeight - (legend ? 24 : 0);
@@ -246,12 +251,18 @@ function lineChart(el, layers, label) {
   const ticksX = monthTicks(t0, t1, Math.max(2, Math.floor(iw / 70)));
   const seg = (run) => run.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
   const marks = L.map((l, li) => {
-    // Break the line across long gaps (monsoon clouds) instead of drawing data that doesn't exist.
-    const runs = [[l.pts[0]]];
-    for (let i = 1; i < l.pts.length; i++) {
-      if (l.pts[i].t - l.pts[i - 1].t > GAP_DAYS * dayMs) runs.push([]);
-      runs[runs.length - 1].push(l.pts[i]);
-    }
+    // Break the line at missing readings and long gaps (monsoon clouds) instead of drawing a
+    // slope between readings weeks apart that was never observed.
+    const runs = [[]];
+    let prev = null;
+    l.all.forEach((p) => {
+      const cur = runs[runs.length - 1];
+      if (p.v == null) { if (cur.length) runs.push([]); prev = null; return; }
+      if (prev && p.t - prev.t > (l.gap ?? GAP_DAYS) * dayMs && cur.length) runs.push([]);
+      runs[runs.length - 1].push(p);
+      prev = p;
+    });
+    if (!runs[runs.length - 1].length) runs.pop();
     const area = li ? "" : `<path class="area" d="${runs.filter((r) => r.length > 1)
       .map((r) => `${seg(r)}L${x(r[r.length - 1].t)},${y(0)}L${x(r[0].t)},${y(0)}Z`).join("")}"/>`;
     // Primary: dots only where a point stands alone. Radar: a marker on every (sparser) estimate.
@@ -407,7 +418,7 @@ function drawCharts() {
     hy.push({ name: t("l_region", { area: reg.id === "other" ? t("outside") : regionName(reg) }), cls: "reg", rows: reg.series, key: "hyacinth_pct" });
   }
   if (current.radar) {
-    hy.push({ name: t("l_radar", { e: nf(current.radar.mae_pct) }), cls: "rad", rows: current.radar.series, key: "hyacinth_pct" });
+    hy.push({ name: t("l_radar", { e: nf(current.radar.mae_pct) }), cls: "rad", rows: current.radar.series, key: "hyacinth_pct", gap: 30 });
   }
   lineChart($("c-hy"), hy, t("c_hy"));
   lineChart($("c-tu"), [optical("turbid_pct")], t("c_tu"));
