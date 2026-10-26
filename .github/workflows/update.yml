@@ -5,6 +5,8 @@ name: Update river data
 on:
   schedule:
     - cron: "30 1 * * *"   # daily 07:00 IST; Sentinel-2 passes every few days, extra runs are cheap no-ops
+  push:                    # publish code changes right away (the bot's own data commits don't trigger this)
+    branches: [main]
   workflow_dispatch:
 
 permissions:
