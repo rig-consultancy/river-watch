@@ -1,0 +1,51 @@
+# Runs the pipeline on a schedule, commits new data, and publishes the dashboard
+# to GitHub Pages. No manual step is needed once this is on GitHub.
+name: Update river data
+
+on:
+  schedule:
+    - cron: "30 1 * * *"   # daily 07:00 IST; Sentinel-2 passes every few days, extra runs are cheap no-ops
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Run pipeline
+        run: uv run python pipeline/run.py
+
+      - name: Commit new data
+        run: |
+          git config user.name "river-watch-bot"
+          git config user.email "river-watch-bot@users.noreply.github.com"
+          git add data/history web/data
+          git diff --cached --quiet || git commit -m "Data update $(date -u +%F)"
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

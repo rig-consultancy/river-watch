@@ -1,0 +1,21 @@
+[project]
+name = "river-watch"
+version = "0.1.0"
+description = "Automatic satellite monitoring of water hyacinth and muddy water on rivers"
+authors = [
+    { name = "SJ", email = "info.rigconsultancy@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.4",
+    "planetary-computer>=1.0.0",
+    "pyproj>=3.8.0",
+    "pystac-client>=0.9.1",
+    "pyyaml>=6.0.3",
+    "rasterio>=1.5.2",
+    "requests>=2.34.2",
+    "shapely>=2.2.0",
+]
+
+[tool.uv]
+package = false

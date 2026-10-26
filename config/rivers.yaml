@@ -1,0 +1,19 @@
+# Rivers monitored by the pipeline. Adding a river = adding an entry here.
+# bbox: [min_lon, min_lat, max_lon, max_lat]
+# osm_names: regex matched against OSM river names inside the bbox.
+
+rivers:
+  - id: mula-mutha-pune
+    name: Mula-Mutha (Pune)
+    bbox: [73.72, 18.44, 74.02, 18.62]
+    osm_names: "Mula|Mutha"
+
+# Detection thresholds (Sentinel-2 L2A surface reflectance).
+detection:
+  max_scene_cloud: 40        # skip scenes with more cloud than this (%)
+  min_valid_fraction: 0.6    # skip dates where < 60% of river pixels are cloud-free
+  hyacinth_ndvi: 0.30        # floating vegetation on water
+  turbid_ndti: 0.05          # (red - green) / (red + green); higher = muddier
+  segment_length_m: 500      # river is split into segments of this length
+  river_buffer_m: 25         # half-width used when OSM has only a centreline
+  lookback_days: 45          # how far back to look for usable scenes each run

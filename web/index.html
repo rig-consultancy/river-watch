@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>River Watch</title>
+<meta name="description" content="Satellite monitoring of water hyacinth and muddy water on Indian rivers, updated automatically from Sentinel-2.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>River Watch</h1>
+    <p class="sub">Floating vegetation (likely water hyacinth) and muddy water, from free Sentinel-2 satellite images</p>
+  </div>
+  <div class="controls">
+    <label for="river">River</label>
+    <select id="river"></select>
+  </div>
+</header>
+
+<main>
+  <p class="meta" id="meta">Loading…</p>
+
+  <section class="tiles" aria-label="Latest figures">
+    <div class="tile"><div class="tile-label">Hyacinth cover</div><div class="tile-value" id="t-pct">–</div><div class="tile-note">of river surface</div></div>
+    <div class="tile"><div class="tile-label">Area covered</div><div class="tile-value" id="t-area">–</div><div class="tile-note">km² of water</div></div>
+    <div class="tile"><div class="tile-label">Change, ~30 days</div><div class="tile-value" id="t-change">–</div><div class="tile-note" id="t-change-note">percentage points</div></div>
+    <div class="tile"><div class="tile-label">Muddy water</div><div class="tile-value" id="t-turbid">–</div><div class="tile-note">of river surface</div></div>
+  </section>
+
+  <section class="mapwrap">
+    <div class="panel map-panel">
+      <div class="panel-head">
+        <h2>Hyacinth by river stretch</h2>
+        <div class="seg" role="group" aria-label="Base map">
+          <button type="button" data-base="map" class="on">Map</button>
+          <button type="button" data-base="sat">Satellite</button>
+        </div>
+      </div>
+      <div id="map" role="region" aria-label="River map"></div>
+      <div class="legend" id="legend" aria-label="Legend: hyacinth cover per 500 m stretch"></div>
+    </div>
+    <div class="panel hot-panel">
+      <div class="panel-head"><h2>Worst stretches</h2></div>
+      <p class="hint">Each stretch is about 500 m of river. Select one to zoom.</p>
+      <ol id="hotspots" class="hotspots"></ol>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="panel">
+      <div class="panel-head"><h2>Hyacinth cover over time</h2><span class="unit">% of river surface</span></div>
+      <div class="chart" id="c-hy"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Muddy water over time</h2><span class="unit">% of river surface</span></div>
+      <div class="chart" id="c-tu"></div>
+    </div>
+  </section>
+
+  <details class="panel table-panel">
+    <summary>Show data table</summary>
+    <div class="table-scroll"><table id="table"><thead><tr><th>Date</th><th>Hyacinth %</th><th>Hyacinth km²</th><th>Muddy %</th><th>Cloud-free %</th></tr></thead><tbody></tbody></table></div>
+  </details>
+
+  <section class="panel about">
+    <h2>How this works</h2>
+    <p>Every few days the European Space Agency's Sentinel-2 satellites photograph the region at 10 m resolution. An automated pipeline downloads each new image, removes clouds and shadows, and checks every water pixel on the river:</p>
+    <ul>
+      <li><strong>Floating vegetation</strong>: water pixels that look strongly green to the satellite (NDVI above <span id="th-ndvi">0.3</span>). On Pune's rivers this is almost always water hyacinth, but it can also be weeds on sandbars or overhanging trees at the banks.</li>
+      <li><strong>Muddy water</strong>: water that reflects more red than green (NDTI above <span id="th-ndti">0.05</span>), a sign of sediment or sewage.</li>
+    </ul>
+    <p>These are <strong>satellite estimates, not lab measurements</strong>. Narrow stretches under 20 m wide and anything smaller than a pixel (plastic, garbage) cannot be seen. During the monsoon many dates are skipped because of clouds.</p>
+    <p class="credits">Contains modified Copernicus Sentinel data, processed via Microsoft Planetary Computer. River outlines © OpenStreetMap contributors.</p>
+  </section>
+</main>
+
+<div class="tooltip" id="tip" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
