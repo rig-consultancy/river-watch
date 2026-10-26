@@ -278,8 +278,12 @@ def write_web(river, det, segments, history):
     out_path = web / f"{river['id']}.json"
     text = json.dumps(out, separators=(",", ":"), allow_nan=False)
     if out_path.exists():
-        old, new = json.loads(out_path.read_text()), json.loads(text)
-        if {**old, "updated": None} == {**new, "updated": None}:
+        # Compare everything except the timestamp and segment geometry: geometry only changes
+        # when a river outline is edited by hand, and its last digits vary across platforms.
+        def comparable(o):
+            feats = [f["properties"] for f in o["segments"]["features"]]
+            return {**o, "updated": None, "segments": feats}
+        if comparable(json.loads(out_path.read_text())) == comparable(json.loads(text)):
             print("  no new data; dashboard unchanged")
             return
     out_path.write_text(text)
