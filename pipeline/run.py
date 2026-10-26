@@ -6,7 +6,8 @@ For each river in config/rivers.yaml:
   3. mask clouds, shadows and river banks
   4. classify floating vegetation (NDVI) and muddy water (NDTI)
   5. aggregate into ~500 m river segments and append to history
-  6. write web/data/<river>.json for the dashboard
+  6. add Sentinel-1 radar passes (cloud-proof, river-wide only), self-calibrated against step 4
+  7. write web/data/<river>.json for the dashboard
 
 Usage:
   uv run python pipeline/run.py                     # normal scheduled run
@@ -39,6 +40,10 @@ UTM = "EPSG:32643"  # UTM 43N covers all of Maharashtra
 RES = 10
 # Scene classification classes that are usable: dark area, vegetation, bare, water, unclassified.
 SCL_OK = [2, 4, 5, 6, 7]
+# Radar backscatter histogram bins (VH, dB). Storing the histogram lets the threshold be
+# re-calibrated later without downloading the images again.
+RADAR_EDGES = np.round(np.arange(-35, 5.001, 0.25), 2)
+STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
 def _projector(src, dst):
@@ -101,7 +106,7 @@ def read_scene(item, tf, w, h):
 
 
 def search(river, since: date, until: date, det):
-    cat = pystac_client.Client.open("https://planetarycomputer.microsoft.com/api/stac/v1",
+    cat = pystac_client.Client.open(STAC_URL,
                                     modifier=planetary_computer.sign_inplace)
     items = cat.search(collections=["sentinel-2-l2a"], bbox=river["bbox"],
                        datetime=f"{since.isoformat()}/{until.isoformat()}",
@@ -156,7 +161,86 @@ def process_day(items, tf, w, h, mask, seg_idx, n_segs, det):
     }
 
 
-def run_river(river, det, since: date | None):
+# ---------- Sentinel-1 radar ----------
+# Open water reflects radar away (dark, ~-20 dB VH); floating plants scatter it back (~-16 dB).
+# The signal is too noisy per 500 m stretch at 10 m pixels, so radar is used river-wide only.
+
+def search_radar(river, since: date, until: date):
+    cat = pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
+    items = cat.search(collections=["sentinel-1-rtc"], bbox=river["bbox"],
+                       datetime=f"{since.isoformat()}/{until.isoformat()}").item_collection()
+    by_day = defaultdict(list)
+    for it in items:
+        by_day[it.datetime.date().isoformat()].append(it)
+    return dict(sorted(by_day.items()))
+
+
+def process_radar_day(items, tf, w, h, mask, rad):
+    vh = np.zeros((h, w), "float32")
+    for it in items:
+        a = read_band(it.assets["vh"].href, tf, w, h, Resampling.bilinear)
+        fill = (vh == 0) & np.isfinite(a) & (a > 0)
+        vh[fill] = a[fill]
+    ok = mask & (vh > 0)
+    if ok.sum() / mask.sum() < rad["min_coverage"]:
+        return None
+    db = np.clip(10 * np.log10(vh[ok]), RADAR_EDGES[0], RADAR_EDGES[-1] - 1e-3)
+    hist, _ = np.histogram(db, RADAR_EDGES)
+    return {"hist": hist.tolist(), "n": int(ok.sum()), "scenes": [it.id for it in items]}
+
+
+def calibrate_radar(history, rad):
+    """Pick the VH threshold that best reproduces optical hyacinth % on same-day pairs.
+
+    Returns the threshold, the number of pairs and a leave-one-out error, or None when
+    there are too few pairs to trust it.
+    """
+    optical = {date.fromisoformat(d): v["hyacinth_pct"] for d, v in history["dates"].items()}
+    pairs = []
+    for d, r in sorted(history.get("radar", {}).items()):
+        d = date.fromisoformat(d)
+        near = [o for o in optical if abs((o - d).days) <= rad["pair_days"]]
+        if near:
+            o = min(near, key=lambda o: abs((o - d).days))
+            above = np.cumsum(np.asarray(r["hist"])[::-1])[::-1] / r["n"] * 100  # % of pixels >= edge k
+            pairs.append((above, optical[o]))
+    if len(pairs) < rad["min_pairs"]:
+        return None
+
+    candidates = np.nonzero((RADAR_EDGES[:-1] >= -25) & (RADAR_EDGES[:-1] <= -10))[0]
+    def best(ps):
+        return min(candidates, key=lambda k: np.mean([abs(a[k] - y) for a, y in ps]))
+    loo = [abs(pairs[i][0][best(pairs[:i] + pairs[i + 1:])] - pairs[i][1]) for i in range(len(pairs))]
+    k = best(pairs)
+    return {"bin": int(k), "threshold_db": float(RADAR_EDGES[k]), "pairs": len(pairs),
+            "mae_pct": round(float(np.mean(loo)), 1)}
+
+
+def radar_pct(r, k):
+    return round(float(sum(r["hist"][k:]) / r["n"] * 100), 1)
+
+
+def update_radar(river, rad, history, since, until, tf, w, h, mask, save):
+    days = search_radar(river, since, until)
+    done = set(history.setdefault("radar", {})) | set(history.setdefault("radar_skipped", []))
+    todo = {d: v for d, v in days.items() if d not in done}
+    print(f"  radar: {len(days)} passes, {len(todo)} new")
+    for d, items in todo.items():
+        try:
+            res = process_radar_day(items, tf, w, h, mask, rad)
+        except Exception as e:
+            print(f"  radar {d}: error {type(e).__name__}: {e}")
+            continue
+        if res is None:
+            history["radar_skipped"].append(d)
+            print(f"  radar {d}: partial coverage, skipped")
+        else:
+            history["radar"][d] = res
+            print(f"  radar {d}: ok")
+        save()
+
+
+def run_river(river, det, rad, since: date | None):
     line, aoi = load_river(river, det)
     segments = make_segments(line, det["segment_length_m"])
     tf, w, h, mask = make_grid(aoi)
@@ -173,6 +257,10 @@ def run_river(river, det, since: date | None):
         print("  segment layout changed; starting history fresh")
         history = {"dates": {}, "skipped": []}
     history["n_segments"] = len(segments)
+
+    def save():
+        hist_path.parent.mkdir(parents=True, exist_ok=True)
+        hist_path.write_text(json.dumps(history, separators=(",", ":"), allow_nan=False))
 
     until = datetime.now(timezone.utc).date()
     since = since or until - timedelta(days=det["lookback_days"])
@@ -193,10 +281,15 @@ def run_river(river, det, since: date | None):
         else:
             history["dates"][d] = res
             print(f"  {d}: hyacinth {res['hyacinth_pct']}%  turbid {res['turbid_pct']}%")
-        hist_path.parent.mkdir(parents=True, exist_ok=True)
-        hist_path.write_text(json.dumps(history, separators=(",", ":"), allow_nan=False))
+        save()
 
-    write_web(river, det, segments, history)
+    if rad:
+        try:  # radar is a bonus layer; an outage there must not block the optical update
+            update_radar(river, rad, history, since, until, tf, w, h, mask, save)
+        except Exception as e:
+            print(f"  radar: skipped this run ({type(e).__name__}: {e})")
+
+    write_web(river, det, rad, segments, history)
 
 
 def segment_places(river, segments, max_dist_m=3000):
@@ -215,7 +308,7 @@ def segment_places(river, segments, max_dist_m=3000):
     return names
 
 
-def write_web(river, det, segments, history):
+def write_web(river, det, rad, segments, history):
     dates = sorted(history["dates"])
     places = segment_places(river, segments)
     if not dates:
@@ -273,6 +366,13 @@ def write_web(river, det, segments, history):
         "segments": {"type": "FeatureCollection", "features": features},
         "series": series,
     }
+    cal = calibrate_radar(history, rad) if rad else None
+    if cal:
+        out["radar"] = {
+            "threshold_db": cal["threshold_db"], "pairs": cal["pairs"], "mae_pct": cal["mae_pct"],
+            "series": [{"date": d, "hyacinth_pct": radar_pct(r, cal["bin"])}
+                       for d, r in sorted(history["radar"].items())],
+        }
     web = ROOT / "web/data"
     web.mkdir(parents=True, exist_ok=True)
     out_path = web / f"{river['id']}.json"
@@ -307,7 +407,7 @@ def main():
         if args.rivers and river["id"] not in args.rivers:
             continue
         print(f"{river['name']}")
-        run_river(river, cfg["detection"], args.since)
+        run_river(river, cfg["detection"], cfg.get("radar"), args.since)
 
 
 if __name__ == "__main__":

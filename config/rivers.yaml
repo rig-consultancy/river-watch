@@ -17,3 +17,10 @@ detection:
   segment_length_m: 500      # river is split into segments of this length
   river_buffer_m: 25         # half-width used when OSM has only a centreline
   lookback_days: 45          # how far back to look for usable scenes each run
+
+# Sentinel-1 radar sees through clouds. Its hyacinth threshold is calibrated automatically
+# against days when an optical image was taken within radar_pair_days of a radar pass.
+radar:
+  pair_days: 2               # optical and radar images this close count as the same day
+  min_pairs: 5               # radar is hidden until this many calibration pairs exist
+  min_coverage: 0.9          # skip radar passes that cover less of the river than this

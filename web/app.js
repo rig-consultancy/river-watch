@@ -6,6 +6,11 @@ const tip = document.getElementById("tip");
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const fmtDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const fmtShort = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+// Local YYYY-MM-DD for a timestamp (toISOString would shift to UTC and change the day in India).
+const isoLocal = (t) => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 let map, segLayer, baseLayers = {}, current;
 
@@ -107,65 +112,81 @@ function drawHotspots(data) {
 }
 
 // ---------- line chart ----------
-function lineChart(el, series, key, label) {
-  const pts = series.map((s) => ({ t: new Date(s.date + "T00:00:00").getTime(), v: s[key], d: s }));
-  const W = el.clientWidth, H = el.clientHeight;
+// layers: [{name, cls, rows, key, tip}] sharing one % axis; the first layer is the primary
+// series (area fill). A legend is shown when there is more than one layer.
+function lineChart(el, layers, label) {
+  const toPts = (l) => l.rows.map((s) => ({ t: new Date(s.date + "T00:00:00").getTime(), v: s[l.key], d: s }));
+  const L = layers.map((l) => ({ ...l, pts: toPts(l) })).filter((l) => l.pts.length);
+  const legend = L.length > 1
+    ? `<div class="chart-legend">${L.map((l) => `<span><i class="key ${l.cls}"></i>${l.name}</span>`).join("")}</div>` : "";
+  const W = el.clientWidth, H = el.clientHeight - (legend ? 24 : 0);
   const m = { l: 36, r: 12, t: 10, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
-  if (pts.length < 2) {
+  if (!L.length || L[0].pts.length < 2) {
     el.innerHTML = `<svg viewBox="0 0 ${W} ${H}"><text class="empty" x="${W / 2}" y="${H / 2}" text-anchor="middle">Collecting data — needs at least two clear dates</text></svg>`;
     return;
   }
-  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
-  const vmax = niceMax(Math.max(...pts.map((p) => p.v)));
+  const all = L.flatMap((l) => l.pts);
+  const t0 = Math.min(...all.map((p) => p.t)), t1 = Math.max(...all.map((p) => p.t));
+  const vmax = niceMax(Math.max(...all.map((p) => p.v)));
   const x = (t) => m.l + ((t - t0) / (t1 - t0)) * iw;
   const y = (v) => m.t + ih - (v / vmax) * ih;
 
   const ticksY = [0, vmax / 2, vmax];
   const ticksX = monthTicks(t0, t1, Math.max(2, Math.floor(iw / 70)));
-  // Break the line across long gaps (monsoon clouds) instead of drawing data that doesn't exist.
-  const runs = [[pts[0]]];
-  for (let i = 1; i < pts.length; i++) {
-    if (pts[i].t - pts[i - 1].t > GAP_DAYS * 864e5) runs.push([]);
-    runs[runs.length - 1].push(pts[i]);
-  }
   const seg = (run) => run.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
-  const path = runs.map(seg).join("");
-  const area = runs.filter((r) => r.length > 1)
-    .map((r) => `${seg(r)}L${x(r[r.length - 1].t)},${y(0)}L${x(r[0].t)},${y(0)}Z`).join("");
-  const lone = runs.filter((r) => r.length === 1).map((r) => r[0]);
-  const last = pts[pts.length - 1];
+  const marks = L.map((l, li) => {
+    // Break the line across long gaps (monsoon clouds) instead of drawing data that doesn't exist.
+    const runs = [[l.pts[0]]];
+    for (let i = 1; i < l.pts.length; i++) {
+      if (l.pts[i].t - l.pts[i - 1].t > GAP_DAYS * 864e5) runs.push([]);
+      runs[runs.length - 1].push(l.pts[i]);
+    }
+    const area = li ? "" : `<path class="area" d="${runs.filter((r) => r.length > 1)
+      .map((r) => `${seg(r)}L${x(r[r.length - 1].t)},${y(0)}L${x(r[0].t)},${y(0)}Z`).join("")}"/>`;
+    // Primary: dots only where a point stands alone. Others: a marker on every (sparser) estimate.
+    const dots = li ? l.pts : runs.filter((r) => r.length === 1).map((r) => r[0]);
+    const last = l.pts[l.pts.length - 1];
+    return `${area}<path class="line ${l.cls}" d="${runs.map(seg).join("")}"/>
+      ${dots.map((p) => `<circle class="dot ${l.cls}" cx="${x(p.t)}" cy="${y(p.v)}" r="${li ? 4 : 3}"/>`).join("")}
+      ${li ? "" : `<circle class="dot ${l.cls}" cx="${x(last.t)}" cy="${y(last.v)}" r="4"/>`}`;
+  }).join("");
 
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">
+  el.innerHTML = `${legend}<svg viewBox="0 0 ${W} ${H}" style="height:${H}px" role="img" aria-label="${label}">
     <g class="axis">${ticksY.map((v) => `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/>
       <text x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${+v.toFixed(1)}%</text>`).join("")}
-      ${ticksX.map((t) => `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${fmtShort(new Date(t).toISOString().slice(0, 10))}</text>`).join("")}
+      ${ticksX.map((t) => `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${fmtShort(isoLocal(t))}</text>`).join("")}
     </g>
     <line class="baseline" x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}"/>
-    <path class="area" d="${area}"/>
-    <path class="line" d="${path}"/>
-    ${lone.map((p) => `<circle class="dot" cx="${x(p.t)}" cy="${y(p.v)}" r="3"/>`).join("")}
-    <circle class="dot" cx="${x(last.t)}" cy="${y(last.v)}" r="4"/>
-    <g class="hover" style="display:none"><line class="cross" y1="${m.t}" y2="${m.t + ih}"/><circle class="dot" r="5"/></g>
+    ${marks}
+    <g class="hover" style="display:none"><line class="cross" y1="${m.t}" y2="${m.t + ih}"/>
+      ${L.map((l) => `<circle class="dot ${l.cls}" r="5"/>`).join("")}</g>
     <rect x="${m.l}" y="0" width="${iw}" height="${H}" fill="transparent"/>
   </svg>`;
 
   const svg = el.querySelector("svg"), hover = svg.querySelector(".hover");
-  const rect = svg.querySelector("rect");
+  const rect = svg.querySelector("rect"), rings = hover.querySelectorAll("circle");
+  const nearest = (pts, t) => pts.reduce((a, p) => (Math.abs(p.t - t) < Math.abs(a.t - t) ? p : a));
   const move = (ev) => {
     const b = svg.getBoundingClientRect();
-    const px = ((ev.clientX - b.left) / b.width) * W;
-    const t = t0 + ((px - m.l) / iw) * (t1 - t0);
-    let best = pts[0];
-    for (const p of pts) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+    const t = t0 + ((((ev.clientX - b.left) / b.width) * W - m.l) / iw) * (t1 - t0);
+    const at = nearest(all, t).t;
     hover.style.display = "";
-    hover.querySelector("line").setAttribute("x1", x(best.t));
-    hover.querySelector("line").setAttribute("x2", x(best.t));
-    hover.querySelector("circle").setAttribute("cx", x(best.t));
-    hover.querySelector("circle").setAttribute("cy", y(best.v));
-    showTip(`<div class="tt-title">${fmtDate(best.d.date)}</div>
-      <div>${label}: <span class="tt-val">${best.v}%</span></div>
-      <div>Cloud-free: ${Math.round(best.d.valid_fraction * 100)}% of river</div>`, ev.clientX, ev.clientY);
+    hover.querySelector("line").setAttribute("x1", x(at));
+    hover.querySelector("line").setAttribute("x2", x(at));
+    const rowsHtml = [];
+    L.forEach((l, i) => {
+      const p = nearest(l.pts, at);
+      const show = Math.abs(p.t - at) <= 6 * 864e5;
+      rings[i].style.display = show ? "" : "none";
+      if (!show) return;
+      rings[i].setAttribute("cx", x(p.t));
+      rings[i].setAttribute("cy", y(p.v));
+      const name = L.length > 1 ? `<i class="key ${l.cls}"></i>${l.name}` : label;
+      const when = p.t !== at ? ` (${fmtDate(p.d.date)})` : "";
+      rowsHtml.push(`<div>${name}: <span class="tt-val">${p.v}%</span>${when}</div>${l.tip ? l.tip(p.d) : ""}`);
+    });
+    showTip(`<div class="tt-title">${fmtDate(isoLocal(at))}</div>${rowsHtml.join("")}`, ev.clientX, ev.clientY);
   };
   rect.addEventListener("pointermove", move);
   rect.addEventListener("pointerdown", move);
@@ -175,7 +196,7 @@ function lineChart(el, series, key, label) {
 function niceMax(v) {
   if (v <= 0) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(v)));
-  for (const s of [1, 2, 2.5, 5, 10]) if (s * p >= v) return s * p;
+  for (const s of [1, 2, 2.5, 4, 5, 6, 8, 10]) if (s * p >= v) return s * p;
   return 10 * p;
 }
 
@@ -191,6 +212,10 @@ function monthTicks(t0, t1, maxTicks) {
 function drawTiles(data) {
   const s = data.series, last = s[s.length - 1];
   document.getElementById("t-pct").textContent = `${last.hyacinth_pct}%`;
+  const radarLast = data.radar?.series.at(-1);
+  document.getElementById("t-pct-note").textContent = radarLast && radarLast.date > last.date
+    ? `optical, ${fmtDate(last.date)} · radar ${fmtDate(radarLast.date)}: ~${radarLast.hyacinth_pct}%`
+    : "of river surface";
   document.getElementById("t-area").textContent = last.hyacinth_km2.toFixed(2);
   document.getElementById("t-turbid").textContent = `${last.turbid_pct}%`;
 
@@ -208,14 +233,37 @@ function drawTiles(data) {
 }
 
 function drawTable(data) {
-  document.querySelector("#table tbody").innerHTML = [...data.series].reverse().map((s) =>
-    `<tr><td>${fmtDate(s.date)}</td><td>${s.hyacinth_pct}</td><td>${s.hyacinth_km2}</td><td>${s.turbid_pct}</td><td>${Math.round(s.valid_fraction * 100)}</td></tr>`).join("");
+  const rows = {};
+  data.series.forEach((s) => (rows[s.date] = { ...s }));
+  (data.radar?.series || []).forEach((r) => (rows[r.date] = { ...rows[r.date], date: r.date, radar_pct: r.hyacinth_pct }));
+  const cell = (v) => `<td>${v ?? ""}</td>`;
+  document.querySelector("#table tbody").innerHTML = Object.values(rows)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .map((s) => `<tr><td>${fmtDate(s.date)}</td>${cell(s.hyacinth_pct)}${cell(s.radar_pct)}${cell(s.hyacinth_km2)}${cell(s.turbid_pct)}${cell(s.valid_fraction == null ? null : Math.round(s.valid_fraction * 100))}</tr>`)
+    .join("");
 }
 
 function drawCharts() {
   if (!current) return;
-  lineChart(document.getElementById("c-hy"), current.series, "hyacinth_pct", "Hyacinth cover");
-  lineChart(document.getElementById("c-tu"), current.series, "turbid_pct", "Muddy water");
+  const optical = (key) => ({ name: "Optical", cls: "opt", rows: current.series, key,
+    tip: (s) => `<div class="tt-sub">Cloud-free: ${Math.round(s.valid_fraction * 100)}% of river</div>` });
+  const hy = [optical("hyacinth_pct")];
+  if (current.radar) {
+    hy.push({ name: `Radar estimate (±${current.radar.mae_pct} pts)`, cls: "rad", rows: current.radar.series, key: "hyacinth_pct" });
+  }
+  lineChart(document.getElementById("c-hy"), hy, "Hyacinth cover");
+  lineChart(document.getElementById("c-tu"), [optical("turbid_pct")], "Muddy water");
+}
+
+function drawAbout(data) {
+  const el = document.getElementById("radar-about");
+  if (!data.radar) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<strong>Through clouds</strong>: the Sentinel-1 radar satellite passes about every 12 days and sees
+    through monsoon clouds. Open water looks dark to radar; floating plants look brighter. The radar line is
+    calibrated automatically against ${data.radar.pairs} days when both satellites passed, and on average it lands within
+    <strong>±${data.radar.mae_pct} percentage points</strong> of the optical figure. It is too coarse to rank individual
+    stretches, so the map and hotspot list use optical images only.`;
 }
 
 // ---------- load ----------
@@ -231,6 +279,7 @@ async function loadRiver(id) {
   drawHotspots(data);
   drawCharts();
   drawTable(data);
+  drawAbout(data);
 }
 
 async function main() {

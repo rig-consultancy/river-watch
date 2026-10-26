@@ -24,7 +24,7 @@
   <p class="meta" id="meta">Loading…</p>
 
   <section class="tiles" aria-label="Latest figures">
-    <div class="tile"><div class="tile-label">Hyacinth cover</div><div class="tile-value" id="t-pct">–</div><div class="tile-note">of river surface</div></div>
+    <div class="tile"><div class="tile-label">Hyacinth cover</div><div class="tile-value" id="t-pct">–</div><div class="tile-note" id="t-pct-note">of river surface</div></div>
     <div class="tile"><div class="tile-label">Area covered</div><div class="tile-value" id="t-area">–</div><div class="tile-note">km² of water</div></div>
     <div class="tile"><div class="tile-label">Change, ~30 days</div><div class="tile-value" id="t-change">–</div><div class="tile-note" id="t-change-note">percentage points</div></div>
     <div class="tile"><div class="tile-label">Muddy water</div><div class="tile-value" id="t-turbid">–</div><div class="tile-note">of river surface</div></div>
@@ -62,7 +62,7 @@
 
   <details class="panel table-panel">
     <summary>Show data table</summary>
-    <div class="table-scroll"><table id="table"><thead><tr><th>Date</th><th>Hyacinth %</th><th>Hyacinth km²</th><th>Muddy %</th><th>Cloud-free %</th></tr></thead><tbody></tbody></table></div>
+    <div class="table-scroll"><table id="table"><thead><tr><th>Date</th><th>Hyacinth % (optical)</th><th>Hyacinth % (radar)</th><th>Hyacinth km²</th><th>Muddy %</th><th>Cloud-free %</th></tr></thead><tbody></tbody></table></div>
   </details>
 
   <section class="panel about">
@@ -72,8 +72,9 @@
       <li><strong>Floating vegetation</strong>: water pixels that look strongly green to the satellite (NDVI above <span id="th-ndvi">0.3</span>). On Pune's rivers this is almost always water hyacinth, but it can also be weeds on sandbars or overhanging trees at the banks.</li>
       <li><strong>Muddy water</strong>: water that reflects more red than green (NDTI above <span id="th-ndti">0.05</span>), a sign of sediment or sewage.</li>
     </ul>
-    <p>These are <strong>satellite estimates, not lab measurements</strong>. Narrow stretches under 20 m wide and anything smaller than a pixel (plastic, garbage) cannot be seen. During the monsoon many dates are skipped because of clouds.</p>
-    <p class="credits">Contains modified Copernicus Sentinel data, processed via Microsoft Planetary Computer. River outlines © OpenStreetMap contributors.</p>
+    <p id="radar-about" hidden></p>
+    <p>These are <strong>satellite estimates, not lab measurements</strong>. Narrow stretches under 20 m wide and anything smaller than a pixel (plastic, garbage) cannot be seen. During the monsoon optical images are mostly cloudy, so only the radar estimate continues.</p>
+    <p class="credits">Contains modified Copernicus Sentinel data (Sentinel-1 and Sentinel-2), processed via Microsoft Planetary Computer. River outlines © OpenStreetMap contributors.</p>
   </section>
 </main>
 

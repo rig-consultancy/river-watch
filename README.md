@@ -20,6 +20,12 @@ web/                        static dashboard (Leaflet map, charts, hotspot list)
 - **Hyacinth:** river pixels with NDVI > 0.30. **Muddy water:** NDTI (red vs green) > 0.05.
 - **Banks:** the river area is shrunk by one pixel (10 m) to reduce mixed land/water pixels.
 - **Change:** each stretch is compared against its value 30–60 days earlier.
+- **Radar (monsoon):** Sentinel-1 (every ~12 days, sees through clouds) gives a river-wide hyacinth
+  estimate. Open water is dark in VH backscatter (~-20 dB), floating plants brighter (~-16 dB). The
+  threshold is re-calibrated on every run against days when an optical image was taken within 2 days,
+  and its leave-one-out error is published on the dashboard (about ±7 points on the Mula-Mutha). Radar
+  is too noisy per 500 m stretch, so the map and hotspot list stay optical-only. It is hidden until
+  at least 5 calibration pairs exist.
 
 ## Run locally
 
@@ -56,6 +62,7 @@ The dashboard's river selector picks it up automatically from `web/data/index.js
 - These are satellite estimates, not lab measurements. Bank vegetation and weeds on sandbars can
   be counted as hyacinth.
 - Rivers narrower than about 20 m, and anything smaller than a pixel (plastic, garbage), can't be seen.
-- During the monsoon (June–September) most dates are cloudy and skipped.
+- During the monsoon (June–September) most optical dates are cloudy; only the less precise radar
+  estimate continues, and it doesn't measure muddiness.
 - Sentinel-2 data is free for any use (credit "Contains modified Copernicus Sentinel data").
   OpenStreetMap tiles are for light use only; for heavy traffic switch to a hosted tile provider.
