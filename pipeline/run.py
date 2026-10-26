@@ -120,14 +120,15 @@ def process_day(items, tf, w, h, mask, seg_idx, n_segs, det):
         fill = v & np.isnan(green)
         green[fill], red[fill], nir[fill] = g[fill], r[fill], n[fill]
 
-    ok = mask & ~np.isnan(green)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ndvi = (nir - red) / (nir + red)
+        ndti = (red - green) / (red + green)
+    # Zero or negative reflectance (sensor saturation, nodata edges) gives non-finite indices.
+    ok = mask & np.isfinite(ndvi) & np.isfinite(ndti) & (green > 0) & (red > 0) & (nir > 0)
     valid_fraction = ok.sum() / mask.sum()
     if valid_fraction < det["min_valid_fraction"]:
         return None
 
-    with np.errstate(invalid="ignore", divide="ignore"):
-        ndvi = (nir - red) / (nir + red)
-        ndti = (red - green) / (red + green)
     hyacinth = ok & (ndvi > det["hyacinth_ndvi"])
 
     idx = seg_idx[ok[mask]]
@@ -193,7 +194,7 @@ def run_river(river, det, since: date | None):
             history["dates"][d] = res
             print(f"  {d}: hyacinth {res['hyacinth_pct']}%  turbid {res['turbid_pct']}%")
         hist_path.parent.mkdir(parents=True, exist_ok=True)
-        hist_path.write_text(json.dumps(history, separators=(",", ":")))
+        hist_path.write_text(json.dumps(history, separators=(",", ":"), allow_nan=False))
 
     write_web(river, det, segments, history)
 
@@ -273,7 +274,14 @@ def write_web(river, det, segments, history):
     }
     web = ROOT / "web/data"
     web.mkdir(parents=True, exist_ok=True)
-    (web / f"{river['id']}.json").write_text(json.dumps(out, separators=(",", ":")))
+    out_path = web / f"{river['id']}.json"
+    text = json.dumps(out, separators=(",", ":"), allow_nan=False)
+    if out_path.exists():
+        old, new = json.loads(out_path.read_text()), json.loads(text)
+        if {**old, "updated": None} == {**new, "updated": None}:
+            print("  no new data; dashboard unchanged")
+            return
+    out_path.write_text(text)
 
     index_path = web / "index.json"
     index = json.loads(index_path.read_text()) if index_path.exists() else {"rivers": []}
