@@ -86,7 +86,8 @@ out;""")
         "type": "FeatureCollection",
         "features": [
             {"type": "Feature",
-             "properties": {"name": el["tags"].get("name:en") or el["tags"]["name"], "place": el["tags"]["place"]},
+             "properties": {"name": el["tags"].get("name:en") or el["tags"]["name"],
+                            "name_mr": el["tags"].get("name:mr"), "place": el["tags"]["place"]},
              "geometry": {"type": "Point", "coordinates": [el["lon"], el["lat"]]}}
             for el in data["elements"]
         ],
@@ -97,14 +98,17 @@ def main():
     cfg = yaml.safe_load((ROOT / "config/rivers.yaml").read_text())
     out_dir = ROOT / "data/rivers"
     out_dir.mkdir(parents=True, exist_ok=True)
-    only = set(sys.argv[1:])
+    # --places refreshes only the place names: a new outline would change the river stretches.
+    places_only = "--places" in sys.argv
+    only = {a for a in sys.argv[1:] if not a.startswith("--")}
     for river in cfg["rivers"]:
         if only and river["id"] not in only:
             continue
         print(f"Fetching {river['name']}")
-        gj = fetch(river)
-        (out_dir / f"{river['id']}.geojson").write_text(json.dumps(gj))
-        print(f"  saved data/rivers/{river['id']}.geojson")
+        if not places_only:
+            gj = fetch(river)
+            (out_dir / f"{river['id']}.geojson").write_text(json.dumps(gj))
+            print(f"  saved data/rivers/{river['id']}.geojson")
         places = fetch_places(river)
         (out_dir / f"{river['id']}.places.geojson").write_text(json.dumps(places))
         print(f"  saved {len(places['features'])} place names")

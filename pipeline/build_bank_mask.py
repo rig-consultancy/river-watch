@@ -19,28 +19,23 @@ import numpy as np
 import rasterio
 import yaml
 
-from run import (ROOT, UTM, bank_mask_path, classify, day_cache, load_river, make_grid,
-                 read_day, search)
+from run import ROOT, UTM, bank_mask_path, classify, day_pixels, load_river, make_grid, search
 
 
-def day_pixels(river, det, d, items, tf, w, h, mask):
-    """(ok, hyacinth) for one date, from the local cache when run.py already saw it."""
-    path = day_cache(river["id"], d)
-    if path.exists():
-        z = np.load(path)
-        if z["ok"].shape == mask.shape:
-            return z["ok"], z["hy"]
+def green_pixels(river, det, d, items, tf, w, h, mask):
+    """(ok, hyacinth) as 2-D grids for one date, from the local cache when run.py already saw it."""
     for attempt in range(3):  # Planetary Computer reads fail now and then
         try:
-            ok, hy, _ = classify(*read_day(items, tf, w, h), mask, det)
+            px = day_pixels(river["id"], d, items, tf, w, h, mask)
             break
         except Exception as e:
             print(f"  {d}: read failed ({type(e).__name__}), retrying")
     else:
         return None
-    path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, ok=ok, hy=hy)
-    return ok, hy
+    ok, hy, _ = classify(px, det)
+    grids = np.zeros((2, h, w), bool)
+    grids[0][mask], grids[1][mask] = ok, hy
+    return grids
 
 
 def build(river, det, cfg):
@@ -54,7 +49,7 @@ def build(river, det, cfg):
     seen = {k: np.zeros((h, w), "uint16") for k in seasons}
     green = {k: np.zeros((h, w), "uint16") for k in seasons}
     for i, d in enumerate(dates, 1):
-        px = day_pixels(river, det, d, days.get(d, []), tf, w, h, mask)
+        px = green_pixels(river, det, d, days.get(d, []), tf, w, h, mask)
         if px is None:
             print(f"  {d}: skipped")
             continue

@@ -9,6 +9,7 @@
   --text-muted: #7a7974;
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #7a5bd6;
   --accent: #2a78d6;
   --good: #006300;
   --critical: #c22f2f;
@@ -30,6 +31,7 @@
     --text-muted: #8f8e86;
     --series-1: #3987e5;
     --series-2: #d95926;
+    --series-3: #9b80ef;
     --accent: #3987e5;
     --good: #3cbf3c;
     --critical: #e66767;
@@ -51,6 +53,7 @@
   --text-muted: #8f8e86;
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #9b80ef;
   --accent: #3987e5;
   --good: #3cbf3c;
   --critical: #e66767;
@@ -77,8 +80,8 @@ h2 { font-size: 15px; }
   max-width: 1200px; margin: 0 auto; padding: 24px 16px 8px;
 }
 .sub { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
-.controls { display: flex; align-items: center; gap: 8px; }
-.controls label { color: var(--text-secondary); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.controls label { color: var(--text-secondary); font-size: 13px; display: flex; align-items: center; gap: 6px; }
 select {
   font: inherit; color: var(--text-primary); background: var(--surface-1);
   border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
@@ -93,7 +96,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .unit { color: var(--text-muted); font-size: 12px; }
 
-.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
 .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
 .tile-label { color: var(--text-secondary); font-size: 13px; }
 .tile-value { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 2px 0; }
@@ -102,6 +105,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .delta-down { color: var(--good); }
 
 .mapwrap { display: grid; grid-template-columns: 1fr 320px; gap: 12px; margin-bottom: 16px; }
+/* Let grid columns shrink below their content on narrow screens instead of overflowing. */
+.mapwrap > *, .charts > *, .detail-grid > *, .tiles > * { min-width: 0; }
 #map { height: 520px; border-radius: 8px; background: var(--grid); }
 .leaflet-container { font: inherit; }
 /* Soften the busy OSM style so the river layer stands out; invert it in dark mode. */
@@ -117,8 +122,19 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 }
 .seg button.on { background: var(--text-primary); color: var(--surface-1); }
 
+.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; }
+.timeline input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.tl-date { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.btn {
+  font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--text-primary);
+}
+.btn:hover, .btn:focus-visible { background: var(--grid); }
+
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
 .legend .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.legend .sw.cloud { background: repeating-linear-gradient(90deg, var(--clear) 0 2px, transparent 2px 6px); }
+.legend .sw.other { background: var(--clear); opacity: 0.3; }
 
 .hot-panel { display: flex; flex-direction: column; min-height: 0; }
 .hint { color: var(--text-muted); font-size: 12px; margin: -6px 0 8px; }
@@ -131,9 +147,28 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .hotspots li button:hover, .hotspots li button:focus-visible { background: var(--grid); outline: none; }
 .rank { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 13px; }
 .hs-name { font-size: 13px; color: var(--text-secondary); }
+.hs-name small { display: block; font-size: 11px; color: var(--text-muted); }
 .hs-val { font-weight: 600; font-variant-numeric: tabular-nums; }
 .hs-bar { grid-column: 2 / 4; height: 4px; border-radius: 2px; background: var(--grid); }
 .hs-bar span { display: block; height: 100%; border-radius: 2px; }
+
+.detail { margin-bottom: 16px; }
+.detail-actions { display: flex; gap: 8px; }
+.detail-grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+.facts { margin: 0; display: grid; gap: 6px; }
+.facts div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--grid); padding-bottom: 4px; }
+.facts dt { color: var(--text-secondary); font-size: 13px; }
+.facts dd { margin: 0; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.chart.small { height: 170px; margin-top: 6px; }
+
+.regions-panel { margin-bottom: 16px; }
+.regions-panel .table-scroll { margin-top: 0; }
+.regions-panel tr.on td { background: var(--grid); }
+.regions-panel .hint { margin: 8px 0 0; }
+.linkish {
+  font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+}
+.linkish:hover { text-decoration: underline; }
 
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .chart { position: relative; height: 220px; }
@@ -151,6 +186,9 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; height: 24px; font-size: 12px; color: var(--text-secondary); }
 .key { display: inline-block; width: 18px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 2px solid var(--series-1); }
 .key.rad { border-top: 2px dashed var(--series-2); }
+.chart .line.reg { stroke: var(--series-3); }
+.chart .dot.reg { fill: var(--series-3); }
+.key.reg { border-top-color: var(--series-3); }
 .tooltip .tt-sub { color: var(--text-muted); }
 
 .tooltip {
@@ -164,6 +202,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 
 .table-panel { margin-bottom: 16px; }
 .table-panel summary { cursor: pointer; font-weight: 600; }
+.downloads { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text-secondary); }
 .table-scroll { overflow-x: auto; margin-top: 12px; max-height: 360px; overflow-y: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
 th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
@@ -175,7 +214,7 @@ th { color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; b
 .credits { font-size: 12px; color: var(--text-muted) !important; }
 
 @media (max-width: 900px) {
-  .mapwrap, .charts { grid-template-columns: 1fr; }
+  .mapwrap, .charts, .detail-grid { grid-template-columns: 1fr; }
   .tiles { grid-template-columns: repeat(2, 1fr); }
   #map { height: 420px; }
   .hotspots { max-height: 320px; }

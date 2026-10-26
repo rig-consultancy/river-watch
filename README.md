@@ -8,17 +8,22 @@ images, analyses the river, and republishes the dashboard.
 
 ```
 config/rivers.yaml          which rivers to watch + detection thresholds
-pipeline/fetch_rivers.py    one-off: river outline + place names from OpenStreetMap -> data/rivers/
+pipeline/fetch_rivers.py    one-off: river outline + place names (English, Marathi) from OpenStreetMap -> data/rivers/
 pipeline/run.py             scheduled: Sentinel-2 -> per-500 m stats -> data/history/ + web/data/
 pipeline/build_bank_mask.py once a year: year-round green pixels (trees, islands) -> data/masks/
-web/                        static dashboard (Leaflet map, charts, hotspot list)
+data/regions/               PMC and PCMC ward boundaries (see its README for sources)
+web/                        static dashboard in English and Marathi (web/i18n.js)
 .github/workflows/update.yml  runs the pipeline daily and deploys web/ to GitHub Pages
 ```
 
 - **Imagery:** Sentinel-2 L2A (10 m, every ~5 days), free via Microsoft Planetary Computer.
 - **Clouds:** scenes with more than 40% cloud are skipped; remaining cloud and shadow pixels are
   masked using the scene classification layer. Dates where under 60% of the river is visible are skipped.
-- **Hyacinth:** river pixels with NDVI > 0.30. **Muddy water:** NDTI (red vs green) > 0.05.
+- **Hyacinth:** river pixels with NDVI > 0.30.
+- **Muddy water:** share of *open water* (NDWI > 0, not hyacinth) with NDTI (red vs green) > 0.05.
+  Measuring it over all river pixels was wrong: mud banks, sparse weed and brown, dying hyacinth
+  also look "red", so the old figure mostly tracked those and rose with hyacinth in the dry season.
+  When less than 5% of the river is open water (choked by weed, very low flow) no figure is given.
 - **Banks:** the river area is shrunk by one pixel (10 m) to reduce mixed land/water pixels.
 - **Fixed vegetation:** pixels green on at least 80% of clear dates, both before (Mar–Jun) and after
   (Oct–Dec) the monsoon, are left out entirely. The monsoon flood flushes floating hyacinth, so a
@@ -26,7 +31,14 @@ web/                        static dashboard (Leaflet map, charts, hotspot list)
   this is about 10% of the mapped river, mostly within 15 m of a bank. Rebuild the mask after each
   monsoon with `uv run python pipeline/build_bank_mask.py`; `run.py` notices the new mask and
   recomputes all history (optical and radar) automatically.
-- **Change:** each stretch is compared against its value 30–60 days earlier.
+- **Change:** each stretch is compared against its value 30–60 days earlier, and the dashboard
+  also compares with the same time last year.
+- **Municipal areas:** each stretch is matched to the PMC and PCMC wards covering at least 20% of a
+  150 m corridor around it. Where the Mula forms the boundary a stretch belongs to both.
+- **2-week outlook:** the median of each stretch's last three clear readings. Backtests showed that
+  extending the recent trend was less accurate than this. Replaying every past date gives the
+  published error (±4.8 points river-wide, ±8.5 per stretch), the likely range, and each stretch's
+  chance of being above 30%. No outlook is given when the horizon falls in the monsoon.
 - **Radar (monsoon):** Sentinel-1 (every ~12 days, sees through clouds) gives a river-wide hyacinth
   estimate. Open water is dark in VH backscatter (~-20 dB), floating plants brighter (~-16 dB). The
   threshold is re-calibrated on every run against days when an optical image was taken within 2 days,
@@ -43,6 +55,11 @@ uv run python pipeline/run.py
 ```bash
 python3 -m http.server 8765 --directory web
 ```
+
+Per-pixel indices are cached in `data/cache/` (not committed), so after changing a threshold or
+the method (bump `METHOD` in `run.py`) the history is rebuilt from the cache without downloading
+images again. Refresh only the place names, e.g. for new Marathi names, with
+`uv run python pipeline/fetch_rivers.py --places`.
 
 Backfill history from a date:
 

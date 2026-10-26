@@ -4,19 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>River Watch</title>
-<meta name="description" content="Satellite monitoring of water hyacinth and muddy water on Indian rivers, updated automatically from Sentinel-2.">
+<meta name="description" content="Satellite monitoring of water hyacinth and muddy water on Pune's rivers, updated automatically from Sentinel-2.">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top">
   <div class="brand">
-    <h1>River Watch</h1>
-    <p class="sub">Floating vegetation (likely water hyacinth) and muddy water, from free Sentinel-2 satellite images</p>
+    <h1 data-i18n="title">River Watch</h1>
+    <p class="sub" data-i18n="sub">Floating vegetation (likely water hyacinth) and muddy water, from free Sentinel-2 satellite images</p>
   </div>
   <div class="controls">
-    <label for="river">River</label>
-    <select id="river"></select>
+    <label><span data-i18n="river">River</span> <select id="river"></select></label>
+    <label><span data-i18n="area">Area</span> <select id="region"></select></label>
+    <div class="seg" role="group" aria-label="Language">
+      <button type="button" data-lang="en" lang="en">English</button>
+      <button type="button" data-lang="mr" lang="mr">मराठी</button>
+    </div>
   </div>
 </header>
 
@@ -24,63 +28,114 @@
   <p class="meta" id="meta">Loading…</p>
 
   <section class="tiles" aria-label="Latest figures">
-    <div class="tile"><div class="tile-label">Hyacinth cover</div><div class="tile-value" id="t-pct">–</div><div class="tile-note" id="t-pct-note">of river surface</div></div>
-    <div class="tile"><div class="tile-label">Area covered</div><div class="tile-value" id="t-area">–</div><div class="tile-note">km² of water</div></div>
-    <div class="tile"><div class="tile-label">Change, ~30 days</div><div class="tile-value" id="t-change">–</div><div class="tile-note" id="t-change-note">percentage points</div></div>
-    <div class="tile"><div class="tile-label">Muddy water</div><div class="tile-value" id="t-turbid">–</div><div class="tile-note">of river surface</div></div>
+    <div class="tile"><div class="tile-label" data-i18n="t_pct">Hyacinth cover</div><div class="tile-value" id="t-pct">–</div><div class="tile-note" id="t-pct-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="t_area">Area covered</div><div class="tile-value" id="t-area">–</div><div class="tile-note" id="t-area-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="t_year">Same time last year</div><div class="tile-value" id="t-year">–</div><div class="tile-note" id="t-year-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="t_change">Change, ~30 days</div><div class="tile-value" id="t-change">–</div><div class="tile-note" id="t-change-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="t_outlook">2-week outlook</div><div class="tile-value" id="t-outlook">–</div><div class="tile-note" id="t-outlook-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="t_turbid">Muddy water</div><div class="tile-value" id="t-turbid">–</div><div class="tile-note" id="t-turbid-note"></div></div>
   </section>
 
   <section class="mapwrap">
     <div class="panel map-panel">
       <div class="panel-head">
-        <h2>Hyacinth by river stretch</h2>
+        <h2 data-i18n="map_title">Hyacinth by river stretch</h2>
         <div class="seg" role="group" aria-label="Base map">
-          <button type="button" data-base="map" class="on">Map</button>
-          <button type="button" data-base="sat">Satellite</button>
+          <button type="button" data-base="map" class="on" data-i18n="base_map">Map</button>
+          <button type="button" data-base="sat" data-i18n="base_sat">Satellite</button>
         </div>
       </div>
       <div id="map" role="region" aria-label="River map"></div>
-      <div class="legend" id="legend" aria-label="Legend: hyacinth cover per 500 m stretch"></div>
+      <div class="timeline">
+        <button type="button" id="play" class="btn" data-i18n="play">Play</button>
+        <input type="range" id="slider" min="0" max="0" value="0" aria-label="Date shown on the map">
+        <span class="tl-date" id="slider-date"></span>
+        <button type="button" id="to-latest" class="btn" data-i18n="latest">Latest</button>
+      </div>
+      <div class="legend" id="legend"></div>
     </div>
     <div class="panel hot-panel">
-      <div class="panel-head"><h2>Worst stretches</h2></div>
-      <p class="hint">Each stretch is about 500 m of river. Select one to zoom.</p>
+      <div class="panel-head">
+        <div class="seg" role="tablist" aria-label="Stretch list">
+          <button type="button" data-list="worst" class="on" data-i18n="tab_worst">Worst now</button>
+          <button type="button" data-list="risk" data-i18n="tab_risk">At risk in 2 weeks</button>
+        </div>
+      </div>
+      <p class="hint" id="list-hint" data-i18n="hint_list">Each stretch is about 500 m of river. Select one for details.</p>
       <ol id="hotspots" class="hotspots"></ol>
     </div>
   </section>
 
+  <section class="panel detail" id="detail" hidden>
+    <div class="panel-head">
+      <h2 id="d-title"></h2>
+      <div class="detail-actions">
+        <button type="button" class="btn" id="d-link" data-i18n="copy_link">Copy link</button>
+        <button type="button" class="btn" id="d-close" data-i18n="close">Close</button>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <dl class="facts" id="d-facts"></dl>
+      <div>
+        <div class="unit" data-i18n="d_history">History of this stretch, % covered</div>
+        <div class="chart small" id="c-seg"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel regions-panel">
+    <div class="panel-head"><h2 data-i18n="regions_title">By municipal area</h2></div>
+    <div class="table-scroll"><table id="regions"><thead><tr>
+      <th data-i18n="r_area">Area</th><th data-i18n="r_len">River length</th><th data-i18n="r_now">Hyacinth now</th>
+      <th data-i18n="r_year">Same time last year</th><th data-i18n="r_worst">Worst stretch</th>
+    </tr></thead><tbody></tbody></table></div>
+    <p class="hint" id="regions-note" data-i18n="regions_note">Stretches on the PMC–PCMC border count towards both.</p>
+  </section>
+
   <section class="charts">
     <div class="panel">
-      <div class="panel-head"><h2>Hyacinth cover over time</h2><span class="unit">% of river surface</span></div>
+      <div class="panel-head"><h2 data-i18n="c_hy">Hyacinth cover over time</h2><span class="unit" data-i18n="u_river">% of river surface</span></div>
       <div class="chart" id="c-hy"></div>
     </div>
     <div class="panel">
-      <div class="panel-head"><h2>Muddy water over time</h2><span class="unit">% of river surface</span></div>
+      <div class="panel-head"><h2 data-i18n="c_tu">Muddy water over time</h2><span class="unit" data-i18n="u_water">% of open water</span></div>
       <div class="chart" id="c-tu"></div>
     </div>
   </section>
 
   <details class="panel table-panel">
-    <summary>Show data table</summary>
-    <div class="table-scroll"><table id="table"><thead><tr><th>Date</th><th>Hyacinth % (optical)</th><th>Hyacinth % (radar)</th><th>Hyacinth km²</th><th>Muddy %</th><th>Cloud-free %</th></tr></thead><tbody></tbody></table></div>
+    <summary data-i18n="show_table">Show data table</summary>
+    <div class="downloads">
+      <span data-i18n="download">Download data (CSV):</span>
+      <button type="button" class="btn" id="dl-dates" data-i18n="dl_dates">By date</button>
+      <button type="button" class="btn" id="dl-segs" data-i18n="dl_segs">By stretch</button>
+    </div>
+    <div class="table-scroll"><table id="table"><thead><tr>
+      <th data-i18n="h_date">Date</th><th data-i18n="h_opt">Hyacinth % (optical)</th><th data-i18n="h_rad">Hyacinth % (radar)</th>
+      <th data-i18n="h_km2">Hyacinth km²</th><th data-i18n="h_water">Open water %</th><th data-i18n="h_turbid">Muddy % of open water</th>
+      <th data-i18n="h_valid">Cloud-free %</th>
+    </tr></thead><tbody></tbody></table></div>
   </details>
 
   <section class="panel about">
-    <h2>How this works</h2>
-    <p>Every few days the European Space Agency's Sentinel-2 satellites photograph the region at 10 m resolution. An automated pipeline downloads each new image, removes clouds and shadows, and checks every water pixel on the river:</p>
+    <h2 data-i18n="about_title">How this works</h2>
+    <p data-i18n="about_1">Every few days the European Space Agency's Sentinel-2 satellites photograph the region at 10 m resolution. An automated pipeline downloads each new image, removes clouds and shadows, and checks every pixel of the river:</p>
     <ul>
-      <li><strong>Floating vegetation</strong>: water pixels that look strongly green to the satellite (NDVI above <span id="th-ndvi">0.3</span>). On Pune's rivers this is almost always water hyacinth. Spots that stay green all year, before and after the monsoon flood, are trees, islands or farmed sandbars; they are left out of every number. Seasonal weeds on banks can still be counted.</li>
-      <li><strong>Muddy water</strong>: water that reflects more red than green (NDTI above <span id="th-ndti">0.05</span>), a sign of sediment or sewage.</li>
+      <li data-i18n-html="about_hy"></li>
+      <li data-i18n-html="about_tu"></li>
+      <li data-i18n-html="about_outlook"></li>
+      <li data-i18n-html="about_regions"></li>
     </ul>
     <p id="radar-about" hidden></p>
-    <p>These are <strong>satellite estimates, not lab measurements</strong>. Narrow stretches under 20 m wide and anything smaller than a pixel (plastic, garbage) cannot be seen. During the monsoon optical images are mostly cloudy, so only the radar estimate continues.</p>
-    <p class="credits">Contains modified Copernicus Sentinel data (Sentinel-1 and Sentinel-2), processed via Microsoft Planetary Computer. River outlines © OpenStreetMap contributors.</p>
+    <p data-i18n-html="about_limits"></p>
+    <p class="credits" data-i18n="credits">Contains modified Copernicus Sentinel data (Sentinel-1 and Sentinel-2), processed via Microsoft Planetary Computer. River outlines and place names © OpenStreetMap contributors. Ward boundaries: DataMeet (PMC 2022 wards traced by SeerMaps for Nikhil VJ, MIT; PCMC wards CC BY-SA 2.5 India).</p>
   </section>
 </main>
 
 <div class="tooltip" id="tip" role="status" aria-live="polite" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

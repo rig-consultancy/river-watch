@@ -5,6 +5,7 @@
 rivers:
   - id: mula-mutha-pune
     name: Mula-Mutha (Pune)
+    name_mr: मुळा-मुठा (पुणे)
     bbox: [73.72, 18.44, 74.02, 18.62]
     osm_names: "Mula|Mutha"
 
@@ -13,7 +14,8 @@ detection:
   max_scene_cloud: 40        # skip scenes with more cloud than this (%)
   min_valid_fraction: 0.6    # skip dates where < 60% of river pixels are cloud-free
   hyacinth_ndvi: 0.30        # floating vegetation on water
-  turbid_ndti: 0.05          # (red - green) / (red + green); higher = muddier
+  turbid_ndti: 0.05          # (red - green) / (red + green) on open water; higher = muddier
+  water_ndwi: 0.0            # (green - nir) / (green + nir) above this = open water
   segment_length_m: 500      # river is split into segments of this length
   river_buffer_m: 25         # half-width used when OSM has only a centreline
   lookback_days: 45          # how far back to look for usable scenes each run
@@ -33,3 +35,24 @@ radar:
   pair_days: 2               # optical and radar images this close count as the same day
   min_pairs: 5               # radar is hidden until this many calibration pairs exist
   min_coverage: 0.9          # skip radar passes that cover less of the river than this
+
+# Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
+# banks fall in both is a border stretch and counts towards both). See data/regions/README.md.
+regions:
+  - id: pmc
+    name: Pune (PMC)
+    name_mr: पुणे (मनपा)
+    file: data/regions/pmc-wards-2022.geojson
+    ward_field: Name1
+  - id: pcmc
+    name: Pimpri-Chinchwad (PCMC)
+    name_mr: पिंपरी-चिंचवड (मनपा)
+    file: data/regions/pcmc-wards.geojson
+    ward_field: name
+
+# 2-week outlook. Backtests on this river showed that extending the recent trend is less
+# accurate than the smoothed current level, so the outlook is that level plus the error
+# range seen in backtests, and per stretch the chance of being above alert_pct.
+outlook:
+  horizon_days: 14
+  alert_pct: 30
