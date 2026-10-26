@@ -18,6 +18,15 @@ detection:
   river_buffer_m: 25         # half-width used when OSM has only a centreline
   lookback_days: 45          # how far back to look for usable scenes each run
 
+# Pixels that stay green all year are trees, islands or farmed sandbars, not floating weed:
+# the monsoon flood flushes hyacinth out, so a pixel green both before and after it is fixed
+# vegetation. Built by pipeline/build_bank_mask.py into data/masks/ and excluded everywhere.
+bank_mask:
+  min_green_share: 0.8       # green on at least this share of clear dates, overall and per season
+  pre_monsoon_months: [3, 4, 5, 6]
+  post_monsoon_months: [10, 11, 12]
+  min_dates_per_season: 3    # need this many clear dates in each season to decide
+
 # Sentinel-1 radar sees through clouds. Its hyacinth threshold is calibrated automatically
 # against days when an optical image was taken within radar_pair_days of a radar pass.
 radar:

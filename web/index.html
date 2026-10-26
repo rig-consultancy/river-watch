@@ -69,7 +69,7 @@
     <h2>How this works</h2>
     <p>Every few days the European Space Agency's Sentinel-2 satellites photograph the region at 10 m resolution. An automated pipeline downloads each new image, removes clouds and shadows, and checks every water pixel on the river:</p>
     <ul>
-      <li><strong>Floating vegetation</strong>: water pixels that look strongly green to the satellite (NDVI above <span id="th-ndvi">0.3</span>). On Pune's rivers this is almost always water hyacinth, but it can also be weeds on sandbars or overhanging trees at the banks.</li>
+      <li><strong>Floating vegetation</strong>: water pixels that look strongly green to the satellite (NDVI above <span id="th-ndvi">0.3</span>). On Pune's rivers this is almost always water hyacinth. Spots that stay green all year, before and after the monsoon flood, are trees, islands or farmed sandbars; they are left out of every number. Seasonal weeds on banks can still be counted.</li>
       <li><strong>Muddy water</strong>: water that reflects more red than green (NDTI above <span id="th-ndti">0.05</span>), a sign of sediment or sewage.</li>
     </ul>
     <p id="radar-about" hidden></p>

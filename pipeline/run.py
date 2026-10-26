@@ -3,7 +3,7 @@
 For each river in config/rivers.yaml:
   1. find new cloud-light Sentinel-2 L2A scenes (Microsoft Planetary Computer, free)
   2. read green/red/NIR + scene classification over the river only
-  3. mask clouds, shadows and river banks
+  3. mask clouds, shadows, river banks and year-round green pixels (see build_bank_mask.py)
   4. classify floating vegetation (NDVI) and muddy water (NDTI)
   5. aggregate into ~500 m river segments and append to history
   6. add Sentinel-1 radar passes (cloud-proof, river-wide only), self-calibrated against step 4
@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -117,24 +118,59 @@ def search(river, since: date, until: date, det):
     return dict(sorted(by_day.items()))
 
 
-def process_day(items, tf, w, h, mask, seg_idx, n_segs, det):
+def read_day(items, tf, w, h):
     green = np.full((h, w), np.nan, "float32")
     red, nir = green.copy(), green.copy()
     for it in items:  # mosaic tiles for the same day; first valid pixel wins
         g, r, n, v = read_scene(it, tf, w, h)
         fill = v & np.isnan(green)
         green[fill], red[fill], nir[fill] = g[fill], r[fill], n[fill]
+    return green, red, nir
 
+
+def classify(green, red, nir, mask, det):
+    """Return (ok, hyacinth, ndti): usable river pixels, floating vegetation, turbidity index."""
     with np.errstate(invalid="ignore", divide="ignore"):
         ndvi = (nir - red) / (nir + red)
         ndti = (red - green) / (red + green)
     # Zero or negative reflectance (sensor saturation, nodata edges) gives non-finite indices.
     ok = mask & np.isfinite(ndvi) & np.isfinite(ndti) & (green > 0) & (red > 0) & (nir > 0)
+    return ok, ok & (ndvi > det["hyacinth_ndvi"]), ndti
+
+
+def day_cache(river_id: str, d: str) -> Path:
+    """Per-pixel result for one date (local only, gitignored); reused by build_bank_mask.py."""
+    return ROOT / f"data/cache/{river_id}/{d}.npz"
+
+
+def bank_mask_path(river_id: str) -> Path:
+    return ROOT / f"data/masks/{river_id}.tif"
+
+
+def load_bank_mask(river_id: str, tf, w, h):
+    """Pixels that are green all year (trees, islands, farmed sandbars), or None if not built yet."""
+    path = bank_mask_path(river_id)
+    if not path.exists():
+        return None
+    with rasterio.open(path) as src:
+        if (src.width, src.height) != (w, h) or not src.transform.almost_equals(tf):
+            print("  bank mask does not match the river grid; rebuild it with build_bank_mask.py")
+            return None
+        return src.read(1).astype(bool)
+
+
+def process_day(items, tf, w, h, mask, bank, seg_idx, n_segs, det, cache_path=None):
+    ok, hyacinth, ndti = classify(*read_day(items, tf, w, h), mask, det)
+    if cache_path:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(cache_path, ok=ok, hy=hyacinth)
+    if bank is not None:
+        ok &= ~bank
+        hyacinth &= ~bank
+        mask = mask & ~bank
     valid_fraction = ok.sum() / mask.sum()
     if valid_fraction < det["min_valid_fraction"]:
         return None
-
-    hyacinth = ok & (ndvi > det["hyacinth_ndvi"])
 
     idx = seg_idx[ok[mask]]
     hy = hyacinth[mask][ok[mask]]
@@ -244,19 +280,28 @@ def run_river(river, det, rad, since: date | None):
     line, aoi = load_river(river, det)
     segments = make_segments(line, det["segment_length_m"])
     tf, w, h, mask = make_grid(aoi)
+    bank = load_bank_mask(river["id"], tf, w, h)
+    river_px = mask if bank is None else mask & ~bank
+    bank_id = None if bank is None else hashlib.sha1(np.packbits(bank).tobytes()).hexdigest()[:12]
 
     # Assign every river pixel to its nearest segment once.
-    rows, cols = np.nonzero(mask)
+    rows, cols = np.nonzero(river_px)
     xs, ys = rasterio.transform.xy(tf, rows, cols)
     tree = STRtree(segments)
     seg_idx = tree.query_nearest(points(xs, ys), return_distance=False, all_matches=False)[1]
 
     hist_path = ROOT / f"data/history/{river['id']}.json"
     history = json.loads(hist_path.read_text()) if hist_path.exists() else {"dates": {}, "skipped": []}
-    if history.get("n_segments") not in (None, len(segments)):
-        print("  segment layout changed; starting history fresh")
+    rebuild_from = None
+    if (history.get("n_segments") not in (None, len(segments))
+            or (history["dates"] and history.get("bank_mask") != bank_id)):
+        # Every stored number depends on which pixels count, so recompute all of it.
+        old = list(history["dates"]) + history["skipped"] + list(history.get("radar", {}))
+        rebuild_from = date.fromisoformat(min(old)) if old else None
+        print(f"  segment layout or bank mask changed; rebuilding history from {rebuild_from}")
         history = {"dates": {}, "skipped": []}
     history["n_segments"] = len(segments)
+    history["bank_mask"] = bank_id
 
     def save():
         hist_path.parent.mkdir(parents=True, exist_ok=True)
@@ -264,6 +309,8 @@ def run_river(river, det, rad, since: date | None):
 
     until = datetime.now(timezone.utc).date()
     since = since or until - timedelta(days=det["lookback_days"])
+    if rebuild_from:
+        since = min(since, rebuild_from)
     days = search(river, since, until, det)
     done = set(history["dates"]) | set(history["skipped"])
     todo = {d: v for d, v in days.items() if d not in done}
@@ -271,7 +318,8 @@ def run_river(river, det, rad, since: date | None):
 
     for d, items in todo.items():
         try:
-            res = process_day(items, tf, w, h, mask, seg_idx, len(segments), det)
+            res = process_day(items, tf, w, h, mask, bank, seg_idx, len(segments), det,
+                              cache_path=day_cache(river["id"], d))
         except Exception as e:  # one bad scene must not stop the scheduled run
             print(f"  {d}: error {type(e).__name__}: {e}")
             continue
@@ -285,7 +333,7 @@ def run_river(river, det, rad, since: date | None):
 
     if rad:
         try:  # radar is a bonus layer; an outage there must not block the optical update
-            update_radar(river, rad, history, since, until, tf, w, h, mask, save)
+            update_radar(river, rad, history, since, until, tf, w, h, river_px, save)
         except Exception as e:
             print(f"  radar: skipped this run ({type(e).__name__}: {e})")
 
