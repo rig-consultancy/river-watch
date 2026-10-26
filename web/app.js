@@ -231,6 +231,7 @@ function lineChart(el, layers, label) {
   const W = el.clientWidth, H = el.clientHeight - (legend ? 24 : 0);
   const m = { l: 40, r: 12, t: 10, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  if (iw <= 0 || ih <= 0) return; // not laid out yet (hidden tab); the resize handler redraws
   if (!L.length || L[0].pts.length < 2) {
     el.innerHTML = `<svg viewBox="0 0 ${W} ${H}"><text class="empty" x="${W / 2}" y="${H / 2}" text-anchor="middle">${t("chart_empty")}</text></svg>`;
     return;
