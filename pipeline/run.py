@@ -3,7 +3,7 @@
 For each river in config/rivers.yaml:
   1. find new cloud-light Sentinel-2 L2A scenes (Microsoft Planetary Computer, free)
   2. read green/red/NIR + scene classification over the river only
-  3. mask clouds, shadows, river banks and year-round green pixels (see build_bank_mask.py)
+  3. mask clouds and shadows; count only river pixels (see build_river_mask.py)
   4. classify floating vegetation (NDVI), open water (NDWI) and how muddy it is (NDTI)
   5. aggregate into ~500 m river segments and append to history
   6. add Sentinel-1 radar passes (cloud-proof, river-wide only), self-calibrated against step 4
@@ -68,7 +68,10 @@ def load_river(river: dict, det: dict):
     # Use mapped water area where OSM has it, a buffered centreline elsewhere,
     # then pull back one pixel from the banks to avoid mixed land/water pixels.
     aoi = unary_union([water, line.buffer(det["river_buffer_m"])]).buffer(-RES)
-    return line, aoi
+    # Wider search area: OSM's river polygon is missing in places and its centreline can run along
+    # one bank. build_river_mask.py finds the real channel inside this from the images themselves.
+    corridor = unary_union([water, line.buffer(det["corridor_m"])])
+    return line, aoi, corridor
 
 
 def make_segments(line, seg_len: float):
@@ -171,26 +174,32 @@ def classify(px, det):
     return ok, hyacinth, water
 
 
-def bank_mask_path(river_id: str) -> Path:
+def river_mask_path(river_id: str) -> Path:
     return ROOT / f"data/masks/{river_id}.tif"
 
 
-def load_bank_mask(river_id: str, tf, w, h):
-    """Pixels that are green all year (trees, islands, farmed sandbars), or None if not built yet."""
-    path = bank_mask_path(river_id)
-    if not path.exists():
-        return None
-    with rasterio.open(path) as src:
-        if (src.width, src.height) != (w, h) or not src.transform.almost_equals(tf):
-            print("  bank mask does not match the river grid; rebuild it with build_bank_mask.py")
-            return None
-        return src.read(1).astype(bool)
+def river_area(river_id: str, tf, w, h, mask, aoi):
+    """(river pixels, green-channel pixels, whether they come from the satellite-derived mask).
+
+    Uses data/masks/<river>.tif (where the images actually showed water, see
+    build_river_mask.py), or the OpenStreetMap outline until that has been built. Green-channel
+    pixels (inside the outline, green all year, never open water) are not measured, only reported.
+    """
+    path = river_mask_path(river_id)
+    if path.exists():
+        with rasterio.open(path) as src:
+            if (src.width, src.height) == (w, h) and src.transform.almost_equals(tf):
+                m = src.read(1)
+                return (m == 1) & mask, (m == 2) & mask, True
+        print("  river mask does not match the grid; rebuild it with build_river_mask.py")
+    osm = rasterize([(aoi, 1)], out_shape=(h, w), transform=tf, dtype="uint8").astype(bool) & mask
+    return osm, np.zeros_like(osm), False
 
 
 def process_day(px, keep, seg_idx, n_segs, det):
     """Aggregate one date's pixels (vectors over the river area) into river and segment stats.
 
-    keep: pixels that count (not fixed vegetation). seg_idx: segment of every pixel.
+    keep: pixels that count as river. seg_idx: segment of every pixel.
     """
     ok, hyacinth, water = classify(px, det)
     ok, hyacinth, water = ok & keep, hyacinth & keep, water & keep
@@ -306,14 +315,19 @@ def update_radar(river, rad, history, since, until, tf, w, h, mask, save):
 
 def run_river(river, cfg, since: date | None):
     det, rad = cfg["detection"], cfg.get("radar")
-    line, aoi = load_river(river, det)
+    line, aoi, corridor = load_river(river, det)
     segments = make_segments(line, det["segment_length_m"])
-    tf, w, h, mask = make_grid(aoi)
-    bank = load_bank_mask(river["id"], tf, w, h)
-    river_px = mask if bank is None else mask & ~bank
-    bank_id = None if bank is None else hashlib.sha1(np.packbits(bank).tobytes()).hexdigest()[:12]
-
-    keep = np.ones(int(mask.sum()), bool) if bank is None else ~bank[mask]
+    tf, w, h, mask = make_grid(corridor)
+    river_px, green_ch, from_images = river_area(river["id"], tf, w, h, mask, aoi)
+    area_id = hashlib.sha1(np.packbits(river_px).tobytes()).hexdigest()[:12]
+    keep = river_px[mask]
+    # Pixels on the edge of the river area mix water and bank, so they are less reliable.
+    inner = river_px.copy()
+    inner[1:] &= river_px[:-1]
+    inner[:-1] &= river_px[1:]
+    inner[:, 1:] &= river_px[:, :-1]
+    inner[:, :-1] &= river_px[:, 1:]
+    edge = (river_px & ~inner)[mask]
 
     # Assign every river pixel to its nearest segment once.
     rows, cols = np.nonzero(mask)
@@ -324,7 +338,7 @@ def run_river(river, cfg, since: date | None):
     hist_path = ROOT / f"data/history/{river['id']}.json"
     history = json.loads(hist_path.read_text()) if hist_path.exists() else {"dates": {}, "skipped": []}
     rebuild_from = None
-    layout = {"n_segments": len(segments), "bank_mask": bank_id}
+    layout = {"n_segments": len(segments), "river_area": area_id}
     old_layout = {k: history.get(k) for k in layout}
     if history["dates"] and (old_layout != layout or history.get("method", 1) != METHOD):
         # Every stored number depends on which pixels count and how, so recompute all of it.
@@ -370,7 +384,12 @@ def run_river(river, cfg, since: date | None):
         except Exception as e:
             print(f"  radar: skipped this run ({type(e).__name__}: {e})")
 
-    write_web(river, cfg, segments, np.bincount(seg_idx[keep], minlength=len(segments)), history)
+    n = len(segments)
+    write_web(river, cfg, segments, history, area={
+        "px": np.bincount(seg_idx[keep], minlength=n),
+        "edge_px": np.bincount(seg_idx[keep & edge], minlength=n),
+        "green_px": np.bincount(seg_idx[green_ch[mask]], minlength=n),
+        "from_images": from_images})
 
 
 def segment_places(river, segments, max_dist_m=3000):
@@ -473,8 +492,34 @@ def outlook(dates, matrix, river_pct, cfg):
     }, seg_out
 
 
-def write_web(river, cfg, segments, seg_px, history):
+def confidence(px, edge_px, green_px, from_images, stale, cfg):
+    """How far to trust one segment's numbers: ("high" | "medium" | "low", reasons).
+
+    Reasons: "small" (little river area to measure), "edges" (mostly pixels on the river edge,
+    which mix water and bank), "green_channel" (much of the channel is green all year and not
+    measured), "outline" (river area from the OSM outline, not seen from space), "stale" (no
+    clear view for over a month).
+    """
+    reasons = []
+    edge_share = edge_px / px if px else 1
+    if green_px / (px + green_px) >= cfg["green_channel_share"]:
+        reasons.append("green_channel")
+    if px < cfg["high_px"]:
+        reasons.append("small")
+    if edge_share > cfg["high_edge_share"]:
+        reasons.append("edges")
+    if not from_images:
+        reasons.append("outline")
+    if stale:
+        reasons.append("stale")
+    if px < cfg["low_px"] or edge_share > cfg["low_edge_share"] or len(reasons) >= 2:
+        return "low", reasons
+    return ("medium" if reasons else "high"), reasons
+
+
+def write_web(river, cfg, segments, history, area):
     det, rad = cfg["detection"], cfg.get("radar")
+    seg_px = area["px"]
     dates = sorted(history["dates"])
     places = segment_places(river, segments)
     regions = segment_regions(segments, cfg.get("regions", []))
@@ -511,23 +556,36 @@ def write_web(river, cfg, segments, seg_px, history):
 
     features = []
     for i, seg in enumerate(segments):
+        # Round to ~10 cm so output is byte-identical across machines (no spurious commits).
+        geom = shapely.transform(to_wgs(seg.simplify(5)), lambda c: np.round(c, 6))
+        base = {"id": i, "place": places[i][0], "place_mr": places[i][1],
+                "regions": regions[i][0], "wards": regions[i][1],
+                "km": round(i * det["segment_length_m"] / 1000, 1),
+                "area_ha": round(float(area["px"][i]) * RES * RES / 1e4, 1),
+                # Channel green on nearly every clear image: weed or riverbed plants, needs a ground check.
+                "green_channel_ha": round(float(area["green_px"][i]) * RES * RES / 1e4, 1)}
         if latest[i] is None:
+            # Shown greyed out with the reason, rather than silently missing from the map.
+            features.append({"type": "Feature", "geometry": mapping(geom), "properties": {
+                **base, "measurable": False, "hyacinth_pct": None,
+                "why": "green_channel" if area["green_px"][i] >= 20 else
+                       "narrow" if area["px"][i] < 5 else "no_clear_view"}})
             continue
         d, (h, nt) = latest[i]
         prev = previous[i]
-        # Round to ~10 cm so output is byte-identical across machines (no spurious commits).
-        geom = shapely.transform(to_wgs(seg.simplify(5)), lambda c: np.round(c, 6))
+        stale = (last - date.fromisoformat(d)).days > 30
+        conf, why = confidence(int(area["px"][i]), int(area["edge_px"][i]), int(area["green_px"][i]),
+                               area["from_images"], stale, cfg["confidence"])
         features.append({
             "type": "Feature",
             "geometry": mapping(geom),
             "properties": {
-                "id": i, "date": d, "place": places[i][0], "place_mr": places[i][1],
-                "regions": regions[i][0], "wards": regions[i][1],
+                **base, "measurable": True, "date": d,
                 "hyacinth_pct": round(h * 100, 1),
                 "ndti": nt,
                 "change_pct": None if prev is None else round((h - prev[0]) * 100, 1),
-                "km": round(i * det["segment_length_m"] / 1000, 1),
                 "outlook": seg_look[i],
+                "confidence": conf, "confidence_why": why,
             },
         })
 
@@ -548,12 +606,17 @@ def write_web(river, cfg, segments, seg_px, history):
         })
 
     keys = ("hyacinth_pct", "hyacinth_km2", "open_water_pct", "turbid_pct", "mean_ndti", "valid_fraction")
-    series = [{"date": d, **{k: history["dates"][d].get(k) for k in keys}} for d in dates]
+    # scene: the Sentinel-2 image behind each date, so anyone can look at the photo itself.
+    series = [{"date": d, **{k: history["dates"][d].get(k) for k in keys},
+               "scene": history["dates"][d]["scenes"][0]} for d in dates]
     out = {
         "river": {"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"), "bbox": river["bbox"]},
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "latest_date": dates[-1],
         "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"]},
+        "river_area": {"from_images": area["from_images"],
+                       "km2": round(float(area["px"].sum()) * RES * RES / 1e6, 2),
+                       "green_channel_km2": round(float(area["green_px"].sum()) * RES * RES / 1e6, 2)},
         "segments": {"type": "FeatureCollection", "features": features},
         "series": series,
         "regions": region_out,

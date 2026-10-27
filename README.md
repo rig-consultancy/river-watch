@@ -10,7 +10,7 @@ images, analyses the river, and republishes the dashboard.
 config/rivers.yaml          which rivers to watch + detection thresholds
 pipeline/fetch_rivers.py    one-off: river outline + place names (English, Marathi) from OpenStreetMap -> data/rivers/
 pipeline/run.py             scheduled: Sentinel-2 -> per-500 m stats -> data/history/ + web/data/
-pipeline/build_bank_mask.py once a year: year-round green pixels (trees, islands) -> data/masks/
+pipeline/build_river_mask.py after each monsoon: where the river really is, from the images -> data/masks/
 data/regions/               PMC and PCMC ward boundaries (see its README for sources)
 web/                        static dashboard in English and Marathi (web/i18n.js)
 .github/workflows/update.yml  runs the pipeline daily and deploys web/ to GitHub Pages
@@ -24,13 +24,22 @@ web/                        static dashboard in English and Marathi (web/i18n.js
   Measuring it over all river pixels was wrong: mud banks, sparse weed and brown, dying hyacinth
   also look "red", so the old figure mostly tracked those and rose with hyacinth in the dry season.
   When less than 5% of the river is open water (choked by weed, very low flow) no figure is given.
-- **Banks:** the river area is shrunk by one pixel (10 m) to reduce mixed land/water pixels.
-- **Fixed vegetation:** pixels green on at least 80% of clear dates, both before (Mar–Jun) and after
-  (Oct–Dec) the monsoon, are left out entirely. The monsoon flood flushes floating hyacinth, so a
-  pixel that stays green through it is a tree, a wooded island or a farmed sandbar. On the Mula-Mutha
-  this is about 10% of the mapped river, mostly within 15 m of a bank. Rebuild the mask after each
-  monsoon with `uv run python pipeline/build_bank_mask.py`; `run.py` notices the new mask and
-  recomputes all history (optical and radar) automatically.
+- **River area, from the images:** OpenStreetMap's outline is missing in places (only a
+  centreline, whose 30 m strip can run along one bank) and elsewhere covers wide vegetated riverbed.
+  So every pixel within 150 m of the centreline counts as river only if Sentinel-2 saw open water
+  there on at least 15% of clear dates. Hyacinth mats pass (the monsoon flood clears them for
+  weeks); bank trees, islands and dry vegetated riverbed never show water and drop out. On the
+  Mula-Mutha this gives 4.1 km² of river, against 5.3 km² in the OSM outline. Rebuild it after each
+  monsoon with `uv run python pipeline/build_river_mask.py`; `run.py` notices and rebuilds history.
+- **Green all year (needs a ground check):** inside the OSM outline, pixels that are green on most
+  clear dates and never open water (0.8 km² here, mostly Wakad–Balewadi and the upper Mutha) are not
+  counted. A channel permanently choked by weed and a riverbed overgrown with plants look the same
+  from space, so these stretches are flagged rather than ranked.
+- **Confidence per stretch:** high, medium or low from how much river area a stretch has, how much
+  of it is on the river edge (mixed water/bank pixels), and how much of its channel is green all
+  year. Low-confidence stretches are faded on the map and left out of the rankings.
+- **Check it yourself:** every date stores the Sentinel-2 image it came from; the dashboard shows
+  that photo for each stretch and links to ESA's Copernicus Browser at the same place and date.
 - **Change:** each stretch is compared against its value 30–60 days earlier, and the dashboard
   also compares with the same time last year.
 - **Municipal areas:** each stretch is matched to the PMC and PCMC wards covering at least 20% of a
@@ -72,9 +81,9 @@ uv run python pipeline/run.py --since 2025-10-01
 1. Add an entry to `config/rivers.yaml` (id, name, bbox, OSM name pattern).
 2. Fetch its outline once: `uv run python pipeline/fetch_rivers.py <river-id>` and commit `data/rivers/`.
 3. Backfill: `uv run python pipeline/run.py --since 2025-10-01 <river-id>`.
-4. Once the history spans a monsoon, build its fixed-vegetation mask:
-   `uv run python pipeline/build_bank_mask.py <river-id>`, rerun step 3's command without `--since`,
-   and commit `data/masks/`.
+4. Once the history spans a monsoon, build its river area from the images:
+   `uv run python pipeline/build_river_mask.py <river-id>`, rerun step 3's command without `--since`,
+   and commit `data/masks/`. Until then the OSM outline is used and every stretch is rated low.
 
 The dashboard's river selector picks it up automatically from `web/data/index.json`.
 
@@ -86,9 +95,11 @@ The dashboard's river selector picks it up automatically from `web/data/index.js
 
 ## Limits
 
-- These are satellite estimates, not lab measurements. Year-round bank trees are excluded, but
-  seasonal weeds on banks and sandbars can still be counted as hyacinth, and a hyacinth mat that
-  survives a whole monsoon in place would be mistaken for fixed vegetation.
+- These are satellite estimates, not lab measurements, and they have not yet been checked against
+  photos or surveys on the ground. Seasonal weeds at the water's edge can still be counted, and a
+  hyacinth mat that never clears, even in the monsoon, is reported as "green all year", not counted.
+- Channels narrower than about 20 m always mix water and bank in 10 m pixels; such stretches are
+  shown as not measurable.
 - Rivers narrower than about 20 m, and anything smaller than a pixel (plastic, garbage), can't be seen.
 - During the monsoon (June–September) most optical dates are cloudy; only the less precise radar
   estimate continues, and it doesn't measure muddiness.

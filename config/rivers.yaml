@@ -18,16 +18,19 @@ detection:
   water_ndwi: 0.0            # (green - nir) / (green + nir) above this = open water
   segment_length_m: 500      # river is split into segments of this length
   river_buffer_m: 25         # half-width used when OSM has only a centreline
+  corridor_m: 150            # search this far either side of the centreline for the real channel
   lookback_days: 45          # how far back to look for usable scenes each run
 
-# Pixels that stay green all year are trees, islands or farmed sandbars, not floating weed:
-# the monsoon flood flushes hyacinth out, so a pixel green both before and after it is fixed
-# vegetation. Built by pipeline/build_bank_mask.py into data/masks/ and excluded everywhere.
-bank_mask:
-  min_green_share: 0.8       # green on at least this share of clear dates, overall and per season
-  pre_monsoon_months: [3, 4, 5, 6]
-  post_monsoon_months: [10, 11, 12]
-  min_dates_per_season: 3    # need this many clear dates in each season to decide
+# Which pixels count as river, decided from the images: within corridor_m of the centreline and
+# open water on at least min_water_share of clear dates (hyacinth mats are flushed by the monsoon
+# and show water for weeks; bank trees, islands and dry vegetated riverbed never do). Built by
+# pipeline/build_river_mask.py into data/masks/; until then the OpenStreetMap outline is used.
+river_mask:
+  min_water_share: 0.15      # open water on at least this share of clear dates
+  min_clear_dates: 20        # need this many clear looks at a pixel to decide
+  channel_m: 50              # keep only water areas within this distance of the centreline
+  fill_holes_m2: 2000        # count gaps smaller than this inside the channel as river
+  min_green_share: 0.6       # inside the OSM outline, never water but green this often: "green channel"
 
 # Sentinel-1 radar sees through clouds. Its hyacinth threshold is calibrated automatically
 # against days when an optical image was taken within radar_pair_days of a radar pass.
@@ -35,6 +38,16 @@ radar:
   pair_days: 2               # optical and radar images this close count as the same day
   min_pairs: 5               # radar is hidden until this many calibration pairs exist
   min_coverage: 0.9          # skip radar passes that cover less of the river than this
+
+# How far to trust each 500 m stretch. High needs at least high_px river pixels (100 m² each)
+# with at most high_edge_share of them on the river edge (mixed water/bank pixels). Low: fewer
+# than low_px, mostly edge pixels, or two or more problems.
+confidence:
+  high_px: 150
+  low_px: 60
+  high_edge_share: 0.5
+  low_edge_share: 0.75
+  green_channel_share: 0.3   # flag a stretch when this much of its channel is green all year
 
 # Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
 # banks fall in both is a border stretch and counts towards both). See data/regions/README.md.

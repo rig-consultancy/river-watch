@@ -160,6 +160,18 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .facts dt { color: var(--text-secondary); font-size: 13px; }
 .facts dd { margin: 0; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
 .chart.small { height: 170px; margin-top: 6px; }
+.photo figure { margin: 12px 0 0; }
+.photo img { display: block; width: 100%; max-width: 420px; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--grid); image-rendering: pixelated; }
+.photo figcaption { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.photo a, td a { color: var(--accent); }
+.conf { display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 6px; border-radius: 999px; border: 1px solid; vertical-align: middle; white-space: nowrap; }
+.conf-high { color: var(--good); }
+.conf-medium { color: var(--text-secondary); }
+.conf-low { color: var(--critical); }
+.conf-why { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.legend .sw.lowconf { background: var(--ramp-2); opacity: 0.45; }
+.legend .sw.green { background: repeating-linear-gradient(90deg, var(--series-3) 0 6px, transparent 6px 10px); }
+.legend .sw.none { background: repeating-linear-gradient(90deg, var(--clear) 0 1px, transparent 1px 5px); }
 
 .regions-panel { margin-bottom: 16px; }
 .regions-panel .table-scroll { margin-top: 0; }

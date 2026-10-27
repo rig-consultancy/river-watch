@@ -95,6 +95,9 @@ function drawLegend() {
   $("legend").innerHTML = `<span>${t("legend")}</span>` +
     items.map(([c, s]) => `<span><i class="sw" style="background:${c}"></i>${s}</span>`).join("") +
     `<span><i class="sw cloud"></i>${t("legend_cloud")}</span>` +
+    `<span><i class="sw lowconf"></i>${t("legend_lowconf")}</span>` +
+    `<span><i class="sw none"></i>${t("legend_none")}</span>` +
+    `<span><i class="sw green"></i>${t("legend_green")}</span>` +
     (state.region !== "all" ? `<span><i class="sw other"></i>${t("legend_other_area")}</span>` : "");
 }
 
@@ -103,15 +106,48 @@ const valueAt = (id) => current.segment_history.hyacinth_pct[idx][id];
 
 function segStyle(f) {
   const p = f.properties, v = valueAt(p.id), mine = inRegion(p);
+  if (greenChannel(p)) return { color: css("--series-3"), weight: 5, opacity: mine ? 0.9 : 0.2, dashArray: "6 5", lineCap: "butt" };
+  if (!p.measurable) return { color: css("--clear"), weight: 2, opacity: mine ? 0.6 : 0.2, dashArray: "1 5", lineCap: "round" };
   if (!mine) return { color: css("--clear"), weight: 2, opacity: 0.25, dashArray: null, lineCap: "round" };
   if (v == null) return { color: css("--clear"), weight: 3, opacity: 0.8, dashArray: "2 6", lineCap: "round" };
-  return { color: binColor(v), weight: v >= BINS[0] ? 6 : 3, opacity: 0.95, dashArray: null, lineCap: "round" };
+  const low = p.confidence === "low"; // still shown, but faded so it doesn't read as a firm finding
+  return { color: binColor(v), weight: v >= BINS[0] && !low ? 6 : 3, opacity: low ? 0.45 : 0.95, dashArray: null, lineCap: "round" };
 }
 
+// Much of the channel green on nearly every clear image: weed or riverbed plants, can't tell from space.
+const greenChannel = (p) => (p.measurable ? (p.confidence_why || []).includes("green_channel") : p.why === "green_channel");
+
+// Confidence badge; with reasons it explains itself in a tooltip.
+function confBadge(p, long) {
+  if (!p.confidence) return "";
+  const why = (p.confidence_why || []).map((r) => t(`why_${r}`)).join("; ");
+  return `<span class="conf conf-${p.confidence}" title="${why}">${t(`conf_${p.confidence}`)}</span>` +
+    (long && why ? `<span class="conf-why">${why}</span>` : "");
+}
+
+// The Sentinel-2 photo behind a date, cropped around a stretch (Planetary Computer's free tiler).
+const sceneOn = (d) => current.series.find((s) => s.date === d)?.scene;
+function photoUrl(scene, f, padDeg = 0.006) {
+  const xs = f.geometry.coordinates.map((c) => c[0]), ys = f.geometry.coordinates.map((c) => c[1]);
+  const bb = [Math.min(...xs) - padDeg, Math.min(...ys) - padDeg, Math.max(...xs) + padDeg, Math.max(...ys) + padDeg]
+    .map((v) => v.toFixed(4)).join(",");
+  return `https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/${bb}.png?collection=sentinel-2-l2a` +
+    `&item=${scene}&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0&max_size=512&color_formula=Gamma%20RGB%201.6%20Saturation%201.2`;
+}
+// ESA's own viewer at this place and date, as an independent second look.
+function esaUrl(f, d) {
+  const c = f.geometry.coordinates[Math.floor(f.geometry.coordinates.length / 2)];
+  return `https://browser.dataspace.copernicus.eu/?zoom=15&lat=${c[1]}&lng=${c[0]}&datasetId=S2_L2A_CDAS` +
+    `&fromTime=${d}T00%3A00%3A00.000Z&toTime=${d}T23%3A59%3A59.999Z&layerId=1_TRUE_COLOR`;
+}
+const riverFeature = () => ({ geometry: { coordinates: current.segments.features.flatMap((f) => f.geometry.coordinates) } });
+
 function segTip(p) {
+  if (!p.measurable) return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${t(`why_${p.why}`)}</div>`;
+  const gc = greenChannel(p) ? `<div class="tt-sub">${t("tt_green_channel", { ha: nf(p.green_channel_ha) })}</div>` : "";
   const v = valueAt(p.id), d = current.segment_history.dates[idx];
   const val = v == null ? t("legend_cloud") : `<span class="tt-val">${nf(v)}%</span>`;
-  return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${val}</div><div class="tt-sub">${fmtDate(d)}</div>`;
+  return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${val} ${confBadge(p)}</div>${gc}<div class="tt-sub">${fmtDate(d)}</div>`;
 }
 
 function drawSegments(fit) {
@@ -160,7 +196,9 @@ function stopPlay() {
 // ---------- stretch lists ----------
 function drawList() {
   const list = $("hotspots");
-  const feats = current.segments.features.map((f) => f.properties).filter(inRegion);
+  // Rankings use only stretches we can stand behind; low-confidence ones stay on the map, faded.
+  const feats = current.segments.features.map((f) => f.properties)
+    .filter((p) => inRegion(p) && p.measurable && p.confidence !== "low");
   const look = current.outlook;
   $("list-hint").textContent = listMode === "risk" && look?.alert_pct
     ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : t("hint_list");
@@ -178,7 +216,7 @@ function drawList() {
   rows.forEach(({ p, val, bar, color }, i) => {
     const li = document.createElement("li");
     li.innerHTML = `<button type="button"><span class="rank">${nf(i + 1, 0)}</span>
-      <span class="hs-name">${segName(p)}<small>${segAreaLabel(p)}</small></span><span class="hs-val">${val}</span>
+      <span class="hs-name">${segName(p)}<small>${segAreaLabel(p)} ${confBadge(p)}</small></span><span class="hs-val">${val}</span>
       <span class="hs-bar"><span style="width:${Math.min(100, bar)}%;background:${color}"></span></span></button>`;
     li.querySelector("button").addEventListener("click", () => selectSegment(p.id, true));
     list.appendChild(li);
@@ -203,6 +241,14 @@ function drawDetail() {
   const p = f.properties, look = current.outlook;
   box.hidden = false;
   $("d-title").textContent = segName(p);
+  if (!p.measurable) {
+    $("d-facts").innerHTML = `<div><dt>${t("f_area")}</dt><dd>${segAreaLabel(p)}</dd></div>` +
+      (p.green_channel_ha ? `<div><dt>${t("f_green_channel")}</dt><dd>${t("ha_val", { ha: nf(p.green_channel_ha) })}</dd></div>` : "") +
+      `<p class="hint">${t(`why_${p.why}`)}</p>`;
+    $("c-seg").innerHTML = "";
+    $("d-photo").innerHTML = "";
+    return;
+  }
   const fact = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
   const change = p.change_pct == null ? "–" : `${p.change_pct > 0 ? "+" : ""}${t("pts", { v: nf(p.change_pct) })}`;
   $("d-facts").innerHTML = [
@@ -214,7 +260,16 @@ function drawDetail() {
     p.outlook ? fact(t("f_outlook"), `~${nf(p.outlook.pct)}%`) : "",
     p.outlook && look?.alert_pct ? fact(t("f_chance", { a: nf(look.alert_pct, 0) }), `${nf(p.outlook.p_alert * 100, 0)}%`) : "",
     fact(t("f_km"), t("km_val", { km: nf(p.km) })),
+    fact(t("f_conf"), confBadge(p, true)),
+    p.area_ha != null ? fact(t("f_area_ha"), t("ha_val", { ha: nf(p.area_ha) })) : "",
+    p.green_channel_ha ? fact(t("f_green_channel"), t("ha_val", { ha: nf(p.green_channel_ha) })) : "",
   ].join("");
+  // Photo: the slider's date if this stretch was clear then, else its last clear date.
+  const sd = current.segment_history.dates[idx], d = valueAt(p.id) != null ? sd : p.date, scene = sceneOn(d);
+  $("d-photo").innerHTML = scene ? `<figure>
+      <img src="${photoUrl(scene, f)}" alt="${t("photo_title", { date: fmtDate(d) })}" loading="lazy">
+      <figcaption>${t("photo_title", { date: fmtDate(d) })} · ${t("photo_note")}
+        <a href="${esaUrl(f, d)}" target="_blank" rel="noopener">${t("open_esa")}</a></figcaption></figure>` : "";
   const sh = current.segment_history;
   const rows = sh.dates.map((d, i) => ({ date: d, v: sh.hyacinth_pct[i][p.id] })).filter((r) => r.v != null);
   lineChart($("c-seg"), [{ name: segName(p), cls: "opt", rows, key: "v" }], t("f_now"));
@@ -390,7 +445,7 @@ function drawRegions() {
   $("regions").querySelector("tbody").innerHTML = current.regions.map((r) => {
     const rows = r.series, now = rows[rows.length - 1];
     const yr = now && closestTo(rows, toT(now.date) - 365 * dayMs, 21);
-    const mine = feats.filter((p) => (r.id === "other" ? !p.regions.length : p.regions.includes(r.id)));
+    const mine = feats.filter((p) => p.measurable && p.confidence !== "low" && (r.id === "other" ? !p.regions.length : p.regions.includes(r.id)));
     const worst = mine.reduce((a, p) => (!a || p.hyacinth_pct > a.hyacinth_pct ? p : a), null);
     const name = r.id === "other" ? t("outside") : regionName(r);
     return `<tr class="${state.region === r.id ? "on" : ""}" data-region="${r.id}">
@@ -432,7 +487,7 @@ function drawTable() {
   const cell = (v, d = 1) => `<td>${v == null ? "" : nf(v, d)}</td>`;
   document.querySelector("#table tbody").innerHTML = Object.values(rows)
     .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .map((s) => `<tr><td>${fmtDate(s.date)}</td>${cell(s.hyacinth_pct)}${cell(s.radar_pct)}${cell(s.hyacinth_km2, 3)}${cell(s.open_water_pct)}${cell(s.turbid_pct)}${cell(s.valid_fraction == null ? null : s.valid_fraction * 100, 0)}</tr>`)
+    .map((s) => `<tr><td>${fmtDate(s.date)}</td>${cell(s.hyacinth_pct)}${cell(s.radar_pct)}${cell(s.hyacinth_km2, 3)}${cell(s.open_water_pct)}${cell(s.turbid_pct)}${cell(s.valid_fraction == null ? null : s.valid_fraction * 100, 0)}<td>${s.scene ? `<a href="${photoUrl(s.scene, riverFeature(), 0.005)}" target="_blank" rel="noopener">${t("photo_link")}</a>` : ""}</td></tr>`)
     .join("");
 }
 
@@ -469,11 +524,11 @@ function initDownloads() {
   $("dl-segs").addEventListener("click", () => {
     download(`${current.river.id}-by-stretch.csv`,
       ["stretch", "km_from_start", "place", "area", "wards", "hyacinth_pct", "last_clear_date", "change_30d_pts",
-        "outlook_14d_pct", "chance_above_alert", "lat", "lon"],
+        "outlook_14d_pct", "chance_above_alert", "confidence", "confidence_reasons", "river_area_ha", "green_channel_ha", "lat", "lon"],
       current.segments.features.map((f) => {
         const p = f.properties, c = f.geometry.coordinates[Math.floor(f.geometry.coordinates.length / 2)];
         return [p.id + 1, p.km, p.place, p.regions.join("+") || "outside", p.wards.join(" / "), p.hyacinth_pct, p.date,
-          p.change_pct, p.outlook?.pct, p.outlook?.p_alert, c[1], c[0]];
+          p.change_pct, p.outlook?.pct, p.outlook?.p_alert, p.confidence, (p.confidence_why || []).join(" ") || p.why, p.area_ha, p.green_channel_ha, c[1], c[0]];
       }));
   });
 }
