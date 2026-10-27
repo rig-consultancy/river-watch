@@ -121,6 +121,15 @@ function segStyle(f) {
 // Much of the channel green on nearly every clear image: weed or riverbed plants, can't tell from space.
 const greenChannel = (p) => (p.measurable ? (p.confidence_why || []).includes("green_channel") : p.why === "green_channel");
 
+// Sharp, lasting drops detected on this stretch, newest first, with their likely cause.
+function cleanupFact(p) {
+  const ev = (current.cleanup_events || []).filter((e) => e.segment === p.id).sort((a, b) => (a.to < b.to ? 1 : -1));
+  if (!ev.length) return "";
+  const rows = ev.slice(0, 5).map((e) => `<span class="conf-why">${fmtDate(e.to)}: ${nf(e.before)}% → ${nf(e.after)}% · ${t(`cause_${e.cause}`)}` +
+    (e.regrowth_days != null ? ` · ${t("r_regrew", { n: nf(e.regrowth_days, 0) })}` : "") + "</span>").join("");
+  return `<div><dt>${t("f_drops", { n: nf(ev.length, 0) })}</dt><dd>${rows}</dd></div>`;
+}
+
 // Flood test for a stretch's green-all-year area: verdict, plus the areas behind it.
 function floodFact(p) {
   const f = p.flood_test;
@@ -296,6 +305,7 @@ function drawDetail() {
     p.area_ha != null ? fact(t("f_area_ha"), t("ha_val", { ha: nf(p.area_ha) })) : "",
     p.green_channel_ha ? fact(t("f_green_channel"), t("ha_val", { ha: nf(p.green_channel_ha) })) : "",
     floodFact(p),
+    cleanupFact(p),
   ].join("");
   // Photo: the slider's date if this stretch was clear then, else its last clear date.
   const sd = current.segment_history.dates[idx], d = valueAt(p.id) != null ? sd : p.date, scene = sceneOn(d);
@@ -545,6 +555,9 @@ function drawAbout() {
   const ft = current.flood_test?.flood_test?.at(-1);
   if (ft) Object.assign(vars, { fy: ft.year, fn: nf(ft.dry_green_px, 0), fc: nf(ft.cleared_px, 0), fs: nf(ft.stayed_px, 0),
     fch: nf(ft.channel_cleared_share * 100, 0), fgc: nf(ft.green_channel_stayed_share * 100, 0) });
+  const lc = current.landsat_check;
+  vars.landsat = lc ? t("about_landsat", { n: nf(lc.pairs, 0), mae: nf(lc.river_mae_pts), bias: nf(lc.river_bias_pts),
+    r: nf(lc.river_correlation, 2), sr: nf(lc.stretch_correlation, 2), smae: nf(lc.stretch_mae_pts) }) : "";
   const u = current.uncertainty;
   if (u) Object.assign(vars, { rn: nf(u.river_noise_pts), rp: nf(u.river_pairs, 0), sh: nf(u.segment_noise_pts.high),
     nlo: nf(u.range_ndvi[0], 2), nhi: nf(u.range_ndvi[1], 2), nrej: nf((current.rejected_dates || []).length, 0),
@@ -589,6 +602,10 @@ function initDownloads() {
 
 // ---------- state ----------
 function syncUrl() {
+  const r = new URLSearchParams({ river: $("river").value });
+  if (state.region !== "all") r.set("area", state.region);
+  if (state.lang !== "en") r.set("lang", state.lang);
+  $("report-link").href = `report.html?${r}`;
   const q = new URLSearchParams();
   q.set("river", $("river").value);
   if (state.region !== "all") q.set("area", state.region);

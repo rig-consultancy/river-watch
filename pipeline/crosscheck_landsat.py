@@ -1,0 +1,146 @@
+"""Independent check: measure the same river with Landsat 8/9 and compare with Sentinel-2.
+
+For every accepted Sentinel-2 date with a Landsat 8/9 image within max_days, hyacinth cover is
+measured from both satellites over the same river pixels (those clear in both), with the same
+NDVI threshold. Landsat's pixels are 30 m against 10 m, so narrow stretches mix more; the
+agreement figures say how far the two independent sensors land apart. Writes
+data/validation/<river>-landsat.json (commit it); the dashboard shows the summary.
+
+Run after a backfill or once a year:
+  uv run python pipeline/crosscheck_landsat.py [river-id ...]
+"""
+
+import argparse
+import json
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
+
+import numpy as np
+import planetary_computer
+import pystac_client
+import rasterio
+import yaml
+from rasterio.enums import Resampling
+from shapely import STRtree, points
+
+from run import (ROOT, STAC_URL, day_pixels, load_river, make_grid, make_segments, read_band,
+                 reject_dates, river_area)
+
+# QA_PIXEL bits: 1 dilated cloud, 2 cirrus, 3 cloud, 4 cloud shadow.
+QA_BAD = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
+
+
+def landsat_scenes(river, since, until):
+    cat = pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
+    items = cat.search(collections=["landsat-c2-l2"], bbox=river["bbox"], datetime=f"{since}/{until}",
+                       query={"platform": {"in": ["landsat-8", "landsat-9"]}, "eo:cloud_cover": {"lt": 60}}).item_collection()
+    return sorted(items, key=lambda it: it.datetime)
+
+
+def landsat_ndvi(item, tf, w, h, mask):
+    """NDVI per river-corridor pixel from one Landsat scene (NaN where cloudy or no data)."""
+    red, nir = (read_band(item.assets[b].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
+                for b in ("red", "nir08"))
+    qa = read_band(item.assets["qa_pixel"].href, tf, w, h, Resampling.nearest)[mask]
+    red, nir = red * 0.0000275 - 0.2, nir * 0.0000275 - 0.2  # Collection 2 surface reflectance scale
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ndvi = (nir - red) / (nir + red)
+    ndvi[(qa & QA_BAD) > 0] = np.nan
+    ndvi[(red <= 0) | (nir <= 0) | (qa == 1)] = np.nan  # qa 1 = fill
+    return ndvi
+
+
+def build(river, cfg, max_days=1):
+    det = cfg["detection"]
+    line, aoi, corridor = load_river(river, det)
+    tf, w, h, mask = make_grid(corridor)
+    river_px, _, _ = river_area(river["id"], tf, w, h, mask, aoi)
+    # Compare only pixels at least 20 m inside the river: there a whole 30 m Landsat pixel is
+    # river, so the comparison isn't dominated by bank pixels that Landsat mixes in.
+    inner = river_px.copy()
+    for _ in range(2):
+        inner[1:] &= inner[:-1].copy(); inner[:-1] &= inner[1:].copy()
+        inner[:, 1:] &= inner[:, :-1].copy(); inner[:, :-1] &= inner[:, 1:].copy()
+    keep = inner[mask]
+    segments = make_segments(line, det["segment_length_m"])
+    rows, cols = np.nonzero(mask)
+    xs, ys = rasterio.transform.xy(tf, rows, cols)
+    seg_idx = STRtree(segments).query_nearest(points(xs, ys), return_distance=False, all_matches=False)[1]
+
+    hist = json.loads((ROOT / f"data/history/{river['id']}.json").read_text())
+    rejected = reject_dates(hist, sorted(hist["dates"]), cfg["quality"])
+    s2_dates = [d for d in sorted(hist["dates"]) if d not in rejected]
+    scenes = landsat_scenes(river, s2_dates[0], s2_dates[-1])
+    pairs = []
+    for it in scenes:
+        ld = it.datetime.date()
+        near = [d for d in s2_dates if abs((date.fromisoformat(d) - ld).days) <= max_days]
+        if near:
+            pairs.append((min(near, key=lambda d: abs((date.fromisoformat(d) - ld).days)), it))
+    print(f"  {len(scenes)} Landsat scenes, {len(pairs)} within {max_days} day of a Sentinel-2 date")
+
+    thr = det["hyacinth_ndvi"]
+    n_segs = len(segments)
+
+    def compare(pair):
+        d, it = pair
+        if not (ROOT / f"data/cache/{river['id']}/{d}.npz").exists():
+            return None  # Sentinel-2 pixels not downloaded yet (run run.py first)
+        try:
+            ls = landsat_ndvi(it, tf, w, h, mask)
+        except Exception as e:
+            print(f"  {it.id}: failed ({type(e).__name__})")
+            return None
+        s2 = day_pixels(river["id"], d, [], tf, w, h, mask)["ndvi"]
+        both = keep & np.isfinite(ls) & np.isfinite(s2)
+        if both.sum() < 0.5 * keep.sum():
+            return None  # mostly cloudy in one of them
+        a, b = s2[both] > thr, ls[both] > thr
+        idx = seg_idx[both]
+        n = np.bincount(idx, minlength=n_segs)
+        sa = np.bincount(idx, weights=a, minlength=n_segs) / np.maximum(n, 1) * 100
+        sb = np.bincount(idx, weights=b, minlength=n_segs) / np.maximum(n, 1) * 100
+        big = n >= 100  # stretches with at least 1 ha of inner river seen by both
+        return {"date": d, "landsat_date": it.datetime.date().isoformat(), "landsat_id": it.id,
+                "pixels": int(both.sum()), "sentinel2_pct": round(float(a.mean() * 100), 2),
+                "landsat_pct": round(float(b.mean() * 100), 2),
+                "stretches": [[int(k), round(float(sa[k]), 1), round(float(sb[k]), 1)] for k in np.nonzero(big)[0]]}
+
+    with ThreadPoolExecutor(4) as pool:
+        results = [r for r in pool.map(compare, pairs) if r]
+    results.sort(key=lambda r: r["date"])
+    if not results:
+        print("  no usable pairs")
+        return
+    s2 = np.array([r["sentinel2_pct"] for r in results])
+    ls = np.array([r["landsat_pct"] for r in results])
+    st = np.array([s[1:] for r in results for s in r["stretches"]])
+    summary = {
+        "pairs": len(results),
+        "river_mae_pts": round(float(np.mean(np.abs(s2 - ls))), 1),
+        "river_bias_pts": round(float(np.mean(ls - s2)), 1),  # Landsat minus Sentinel-2
+        "river_correlation": round(float(np.corrcoef(s2, ls)[0, 1]), 3) if len(results) > 2 else None,
+        "stretch_comparisons": int(len(st)),
+        "stretch_mae_pts": round(float(np.mean(np.abs(st[:, 0] - st[:, 1]))), 1) if len(st) else None,
+        "stretch_correlation": round(float(np.corrcoef(st[:, 0], st[:, 1])[0, 1]), 3) if len(st) > 2 else None,
+    }
+    out = ROOT / f"data/validation/{river['id']}-landsat.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"summary": summary, "pairs": results}, separators=(",", ":")))
+    print(f"  {summary}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("rivers", nargs="*", help="river ids (default: all)")
+    args = ap.parse_args()
+    cfg = yaml.safe_load((ROOT / "config/rivers.yaml").read_text())
+    for river in cfg["rivers"]:
+        if args.rivers and river["id"] not in args.rivers:
+            continue
+        print(river["name"])
+        build(river, cfg)
+
+
+if __name__ == "__main__":
+    main()

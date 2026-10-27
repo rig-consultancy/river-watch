@@ -89,6 +89,7 @@ select {
 
 main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .meta { color: var(--text-muted); font-size: 13px; margin: 0 0 16px; }
+.meta a { color: var(--accent); }
 
 .panel {
   background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px;

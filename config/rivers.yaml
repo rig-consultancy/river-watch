@@ -1,4 +1,5 @@
-# Rivers monitored by the pipeline. Adding a river = adding an entry here.
+# Rivers monitored by the pipeline. Adding a river = adding an entry here (with draft: true while
+# its history is backfilled locally, so scheduled runs leave it alone).
 # bbox: [min_lon, min_lat, max_lon, max_lat]
 # osm_names: regex matched against OSM river names inside the bbox.
 
@@ -8,6 +9,18 @@ rivers:
     name_mr: मुळा-मुठा (पुणे)
     bbox: [73.72, 18.44, 74.02, 18.62]
     osm_names: "Mula|Mutha"
+  - id: pawana-pcmc
+    name: Pawana (Pimpri-Chinchwad)
+    name_mr: पवना (पिंपरी-चिंचवड)
+    bbox: [73.66, 18.55, 73.85, 18.69]
+    osm_names: "Pawana|Pavana|पवना"
+    draft: true              # being backfilled; scheduled runs skip it until this line goes
+  - id: indrayani-pcmc
+    name: Indrayani (Dehu-Alandi)
+    name_mr: इंद्रायणी (देहू-आळंदी)
+    bbox: [73.74, 18.65, 73.95, 18.75]
+    osm_names: "Indrayani|इंद्रायणी"
+    draft: true
 
 # Detection thresholds (Sentinel-2 L2A surface reflectance).
 detection:
@@ -66,6 +79,15 @@ quality:
   cloud_share: 0.1
   max_z: 3
   spike_pts: 15
+
+# Clean-up detection: sharp, lasting drops on a stretch outside the monsoon, labelled "rain"
+# (rain_mm or more in between, NASA POWER), "river_wide" (river_wide_share or more of the
+# stretches that had weed dropped together: flow or wind) or "removal" (probable clean-up).
+cleanup:
+  min_before: 20             # % cover needed before the drop
+  drop_pts: 15               # at least this many points (and 3x the stretch's noise)
+  rain_mm: 25
+  river_wide_share: 0.3
 
 # Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
 # banks fall in both is a border stretch and counts towards both). See data/regions/README.md.

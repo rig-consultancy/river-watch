@@ -18,11 +18,13 @@ import argparse
 import hashlib
 import json
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
 import planetary_computer
+import requests
 import pystac_client
 import rasterio
 import shapely
@@ -146,6 +148,8 @@ def day_pixels(river_id: str, d: str, items, tf, w, h, mask):
         z = np.load(path)
         if "ndvi" in z and z["ndvi"].shape == (n,):
             return {k: z[k].astype("float32") for k in ("ndvi", "ndti", "ndwi")}
+    if not items:  # would otherwise cache an all-empty date and poison every later rebuild
+        raise ValueError(f"{d} is not cached and no images were given")
     green, red, nir = (b[mask] for b in read_day(items, tf, w, h))
     with np.errstate(invalid="ignore", divide="ignore"):
         px = {"ndvi": (nir - red) / (nir + red),
@@ -172,13 +176,45 @@ def day_quality(river_id: str, d: str, items, tf, w, h, mask):
     path = ROOT / f"data/cache/{river_id}/quality.json"
     q = json.loads(path.read_text()) if path.exists() else {}
     if d not in q:
-        aot = read_band(items[0].assets["AOT"].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
-        scl = read_band(items[0].assets["SCL"].href, tf, w, h, Resampling.nearest)[mask]
-        q[d] = {"aot": round(float(aot[aot > 0].mean()) / 1000, 3) if (aot > 0).any() else None,
-                "cloud_share": round(float(np.isin(scl, [3, 8, 9, 10]).mean()), 3)}
+        q[d] = read_quality(items, tf, w, h, mask)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(q, indent=0, sort_keys=True))
     return q[d]
+
+
+def read_quality(items, tf, w, h, mask):
+    aot = read_band(items[0].assets["AOT"].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
+    scl = read_band(items[0].assets["SCL"].href, tf, w, h, Resampling.nearest)[mask]
+    return {"aot": round(float(aot[aot > 0].mean()) / 1000, 3) if (aot > 0).any() else None,
+            "cloud_share": round(float(np.isin(scl, [3, 8, 9, 10]).mean()), 3)}
+
+
+def prefetch(river_id: str, todo: dict, tf, w, h, mask, workers=4):
+    """Download many dates at once into the local cache (backfills); the main loop then reads it.
+
+    Downloads are network-bound, so a few threads cut a multi-hour backfill to a fraction.
+    """
+    qpath = ROOT / f"data/cache/{river_id}/quality.json"
+    q = json.loads(qpath.read_text()) if qpath.exists() else {}
+
+    def one(d, items):
+        for attempt in range(3):  # Planetary Computer reads fail now and then
+            try:
+                day_pixels(river_id, d, items, tf, w, h, mask)
+                return d, q.get(d) or read_quality(items, tf, w, h, mask)
+            except Exception as e:
+                err = e
+        print(f"  {d}: download failed ({type(err).__name__}); will retry in the main loop")
+        return d, None
+
+    with ThreadPoolExecutor(workers) as pool:
+        for i, (d, qd) in enumerate(pool.map(lambda kv: one(*kv), todo.items()), 1):
+            if qd:
+                q[d] = qd
+            if i % 10 == 0 or i == len(todo):
+                print(f"  downloaded {i}/{len(todo)}", flush=True)
+                qpath.parent.mkdir(parents=True, exist_ok=True)
+                qpath.write_text(json.dumps(q, indent=0, sort_keys=True))
 
 
 def classify(px, det):
@@ -328,11 +364,20 @@ def update_radar(river, rad, history, since, until, tf, w, h, mask, save):
     done = set(history.setdefault("radar", {})) | set(history.setdefault("radar_skipped", []))
     todo = {d: v for d, v in days.items() if d not in done}
     print(f"  radar: {len(days)} passes, {len(todo)} new")
-    for d, items in todo.items():
+
+    def one(kv):
+        d, items = kv
         try:
-            res = process_radar_day(items, tf, w, h, mask, rad)
+            return d, process_radar_day(items, tf, w, h, mask, rad), None
         except Exception as e:
-            print(f"  radar {d}: error {type(e).__name__}: {e}")
+            return d, None, e
+
+    # A few passes at a time: downloads are network-bound, backfills have hundreds of passes.
+    with ThreadPoolExecutor(4) as pool:
+        results = list(pool.map(one, todo.items()))
+    for d, res, err in results:
+        if err is not None:
+            print(f"  radar {d}: error {type(err).__name__}: {err}")
             continue
         if res is None:
             history["radar_skipped"].append(d)
@@ -392,6 +437,8 @@ def run_river(river, cfg, since: date | None):
     done = set(history["dates"]) | set(history["skipped"])
     todo = {d: v for d, v in days.items() if d not in done}
     print(f"  {len(days)} candidate dates, {len(todo)} new")
+    if len(todo) > 10:
+        prefetch(river["id"], todo, tf, w, h, mask)
 
     for d, items in todo.items():
         try:
@@ -471,17 +518,34 @@ def segment_regions(segments, regions, buffer_m=150, min_share=0.2):
 def outlook(dates, matrix, river_pct, cfg):
     """2-week outlook for the river and each segment, with backtested error.
 
-    Level = median of the last 3 clear observations within 45 days. Every past date is
-    replayed as if it were today and compared with what was seen ~horizon days later; those
-    errors give the published accuracy, the river's likely range, and per segment the
-    chance of being above alert_pct.
+    Forecast = recent level (median of the last 3 clear observations within 45 days) plus the
+    typical change over the same 2 weeks of the year in the OTHER years on record (needs 3).
+    Backtests over 2017-2026 showed this beats both the level alone and "no change" (river-wide
+    4.7 vs 5.4 and 5.2 points). Every past date is replayed as if it were today and compared with
+    what was seen ~horizon days later; those errors give the published accuracy, the river's
+    likely range, and per segment the chance of being above alert_pct.
     """
     H, alert = cfg["horizon_days"], cfg["alert_pct"]
     t = np.array([date.fromisoformat(d).toordinal() for d in dates])
+    years = np.array([int(d[:4]) for d in dates])
+    doy = np.array([date.fromisoformat(d).timetuple().tm_yday for d in dates])
+
+    def seasonal(y, i):
+        """Median change from this day of year to H days later, across the other years."""
+        d0, d1 = doy[i], (doy[i] + H - 1) % 365 + 1
+        out = []
+        for yr in np.unique(years[years != years[i]]):
+            sel = (years == yr) & np.isfinite(y)
+            a, b = y[sel & (np.abs(doy - d0) <= 10)], y[sel & (np.abs(doy - d1) <= 10)]
+            if len(a) and len(b):
+                out.append(np.median(b) - np.median(a))
+        return float(np.median(out)) if len(out) >= 3 else 0.0
 
     def level(y, i):
         m = (t <= t[i]) & (t > t[i] - 45) & np.isfinite(y)
-        return float(np.median(y[m][-3:])) if m.sum() >= 3 else None
+        if m.sum() < 3:
+            return None
+        return float(np.clip(np.median(y[m][-3:]) + seasonal(y, i), 0, 100))
 
     def backtest(y):
         res = []  # (predicted, actual - predicted, last value error)
@@ -566,6 +630,74 @@ def flood_verdict(px):
     verdict = ("rooted" if share["survived"] >= 0.7 else "floating" if share["cleared"] >= 0.5
                else "unclear" if share["unclear"] >= 0.5 else "mixed")
     return {"verdict": verdict, **{f"{k}_ha": round(v * RES * RES / 1e4, 1) for k, v in px.items()}}
+
+
+def rainfall(river, start: str, end: str):
+    """Daily rainfall (mm) at the river's centre from NASA POWER (public domain, no key), or {}.
+
+    Cached in data/cache/<river>/rain.json; only days not yet cached are requested.
+    """
+    path = ROOT / f"data/cache/{river['id']}/rain.json"
+    rain = json.loads(path.read_text()) if path.exists() else {}
+    have = max(rain) if rain else None
+    if have is None or have < end:
+        lon = (river["bbox"][0] + river["bbox"][2]) / 2
+        lat = (river["bbox"][1] + river["bbox"][3]) / 2
+        first = (date.fromisoformat(have) + timedelta(days=1)).isoformat() if have else start
+        try:
+            r = requests.get("https://power.larc.nasa.gov/api/temporal/daily/point", timeout=60, params={
+                "parameters": "PRECTOTCORR", "community": "AG", "format": "JSON",
+                "longitude": round(lon, 3), "latitude": round(lat, 3),
+                "start": first.replace("-", ""), "end": end.replace("-", "")})
+            r.raise_for_status()
+            for k, v in r.json()["properties"]["parameter"]["PRECTOTCORR"].items():
+                if v >= 0:  # -999 = not available yet
+                    rain[f"{k[:4]}-{k[4:6]}-{k[6:]}"] = v
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(rain, separators=(",", ":"), sort_keys=True))
+        except Exception as e:  # rainfall only explains drops; without it they are labelled "unknown"
+            print(f"  rainfall: unavailable ({type(e).__name__})")
+    return rain
+
+
+def cleanup_events(dates, hy, sigma, rain, cfg):
+    """Sharp drops per segment, labelled by their likely cause.
+
+    A drop: a reading of at least min_before %, then within 3 weeks one at least drop_pts (and
+    3x the noise) lower and at most half, outside the monsoon, still low on the next reading if
+    there is one. Cause: "rain" if rain_mm or more fell in between, "river_wide" if many stretches
+    dropped over the same interval (flow or wind), otherwise "removal" (probable clean-up).
+    regrowth_days: days until the stretch was back to half its earlier level, if seen.
+    """
+    t = np.array([date.fromisoformat(d).toordinal() for d in dates])
+    monsoon = np.array([(6, 15) <= (int(d[5:7]), int(d[8:10])) <= (9, 30) for d in dates])
+    drops = []
+    for k in range(hy.shape[1]):
+        seen = np.nonzero(np.isfinite(hy[:, k]))[0]
+        th = max(cfg["drop_pts"], 3 * (sigma.get(k) or 0))
+        for n, (a, b) in enumerate(zip(seen, seen[1:])):
+            before, after = hy[a, k], hy[b, k]
+            if (t[b] - t[a] > 21 or monsoon[a] or monsoon[b] or before < cfg["min_before"]
+                    or before - after < th or after > before / 2):
+                continue
+            nxt = seen[n + 2] if n + 2 < len(seen) else None
+            if nxt is not None and t[nxt] - t[b] <= 21 and hy[nxt, k] > before / 2:
+                continue  # bounced straight back: not a lasting drop
+            back = next((j for j in seen[n + 2:] if hy[j, k] >= before / 2), None)
+            drops.append({"segment": k, "from": dates[a], "to": dates[b], "before": round(float(before), 1),
+                          "after": round(float(after), 1), "confirmed": bool(nxt is not None and t[nxt] - t[b] <= 21),
+                          "regrowth_days": int(t[back] - t[b]) if back is not None else None})
+    # How many stretches with something to lose dropped over each interval: many at once = river-wide.
+    for e in drops:
+        a, b = dates.index(e["from"]), dates.index(e["to"])
+        had = np.nanmax(hy[a:b + 1], axis=0) >= cfg["min_before"]
+        same = sum(1 for o in drops if o["from"] >= e["from"] and o["to"] <= e["to"])
+        mm = sum(v for d, v in rain.items() if e["from"] < d <= e["to"]) if rain else None
+        e["rain_mm"] = None if mm is None else round(mm, 1)
+        e["cause"] = ("rain" if mm is not None and mm >= cfg["rain_mm"]
+                      else "river_wide" if had.sum() and same / had.sum() >= cfg["river_wide_share"]
+                      else "removal" if mm is not None else "unknown")
+    return drops
 
 
 def reject_dates(history, dates, cfg):
@@ -677,6 +809,10 @@ def write_web(river, cfg, segments, history, area):
         cols = [k for k, (c, _) in conf.items() if c == level]
         seg_sigma[level] = repeat_noise(dates, list(hy[:, cols])) if cols else (None, 0)
 
+    rain = rainfall(river, dates[0], dates[-1]) if cfg.get("cleanup") else {}
+    events = cleanup_events(dates, hy, {k: seg_sigma[c][0] for k, (c, _) in conf.items()}, rain,
+                            cfg["cleanup"]) if cfg.get("cleanup") else []
+
     def likely(lo_val, hi_val, sigma):
         pad = z80 * (sigma or 0)
         return [round(max(0.0, lo_val - pad), 1), round(min(100.0, hi_val + pad), 1)]
@@ -749,6 +885,9 @@ def write_web(river, cfg, segments, history, area):
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "latest_date": dates[-1],
         "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"]},
+        # Independent check against Landsat 8/9 (see crosscheck_landsat.py), summary only.
+        "landsat_check": (json.loads((ROOT / f"data/validation/{river['id']}-landsat.json").read_text())["summary"]
+                          if (ROOT / f"data/validation/{river['id']}-landsat.json").exists() else None),
         # Whole-river evidence behind the flood test (see build_river_mask.py).
         "flood_test": (json.loads(river_mask_path(river["id"]).with_suffix(".json").read_text())
                        if river_mask_path(river["id"]).with_suffix(".json").exists() else None),
@@ -758,6 +897,8 @@ def write_web(river, cfg, segments, history, area):
         "segments": {"type": "FeatureCollection", "features": features},
         "series": series,
         "regions": region_out,
+        # Sharp, lasting drops per stretch with their likely cause (see cleanup_events).
+        "cleanup_events": events,
         # Images left out of every figure, and why (shown in the data table).
         "rejected_dates": [{"date": d, "reason": rejected[d], "aot": history["dates"][d].get("aot"),
                             "cloud_share": history["dates"][d].get("cloud_share"),
@@ -822,6 +963,8 @@ def main():
     for river in cfg["rivers"]:
         if args.rivers and river["id"] not in args.rivers:
             continue
+        if river.get("draft") and river["id"] not in args.rivers:
+            continue  # being set up; only runs when named
         print(f"{river['name']}")
         run_river(river, cfg, args.since)
 

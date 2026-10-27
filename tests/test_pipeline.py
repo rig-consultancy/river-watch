@@ -128,3 +128,31 @@ def test_published_dashboard_data_is_complete(path):
         if p["measurable"]:
             assert p["confidence"] in ("high", "medium", "low")
             assert p["range"][0] <= p["hyacinth_pct"] <= p["range"][1] + 0.05
+
+
+CLEANUP = {"min_before": 20, "drop_pts": 15, "rain_mm": 25, "river_wide_share": 0.3}
+
+
+def test_cleanup_events_label_cause_and_regrowth():
+    dates = [f"2026-02-{d:02d}" for d in (1, 6, 11, 16, 21, 26)]
+    hy = np.full((len(dates), 10), 30.0)  # 10 stretches steady at 30%: plenty with weed, none dropping
+    hy[:, 0] = [40, 5, 4, 6, 25, 30]      # lasting drop, back to half its level after 15 days
+    hy[:, 1] = [40, 5, 38, 39, 40, 41]    # dips and bounces straight back: not lasting
+    dry = {"2026-02-03": 0.0}
+    ev = run.cleanup_events(dates, hy, {}, dry, CLEANUP)
+    assert [(e["segment"], e["from"], e["to"], e["cause"]) for e in ev] == [(0, "2026-02-01", "2026-02-06", "removal")]
+    assert ev[0]["confirmed"] and ev[0]["regrowth_days"] == 15
+    assert run.cleanup_events(dates, hy, {}, {"2026-02-03": 40.0}, CLEANUP)[0]["cause"] == "rain"
+    hy[:, 2:6] = np.array([40, 5, 5, 5, 5, 5])[:, None]  # 5 of 10 drop together: river-wide
+    assert {e["cause"] for e in run.cleanup_events(dates, hy, {}, dry, CLEANUP)} == {"river_wide"}
+
+
+@pytest.mark.parametrize("script", sorted((ROOT / "web").glob("*.js")), ids=lambda p: p.name)
+def test_dashboard_scripts_parse(script):
+    """A stray quote in a translation once broke the whole page; catch that before deploy."""
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node not installed")
+    r = subprocess.run(["node", "--check", str(script)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

@@ -1,8 +1,10 @@
 # River Watch
 
-Automatic satellite monitoring of water hyacinth (floating vegetation) and muddy water on rivers,
-starting with the Mula-Mutha in Pune. No manual steps: a scheduled job downloads new Sentinel-2
-images, analyses the river, and republishes the dashboard.
+Automatic satellite monitoring of water hyacinth (floating vegetation) and muddy water on Pune's
+rivers: the Mula-Mutha, Pawana and Indrayani, from 2017. No manual steps: a scheduled job downloads
+new Sentinel-2 images, analyses the rivers, and republishes the dashboard and monthly reports.
+
+Copyright RIG Consultancy, all rights reserved (see LICENSE).
 
 ## How it works
 
@@ -10,10 +12,12 @@ images, analyses the river, and republishes the dashboard.
 config/rivers.yaml          which rivers to watch + detection thresholds
 pipeline/fetch_rivers.py    one-off: river outline + place names (English, Marathi) from OpenStreetMap -> data/rivers/
 pipeline/run.py             scheduled: Sentinel-2 -> per-500 m stats -> data/history/ + web/data/
-pipeline/build_river_mask.py after each monsoon: where the river really is, from the images -> data/masks/
+pipeline/build_river_mask.py after each monsoon (CI runs it on 15 Oct): river area + flood test -> data/masks/
+pipeline/crosscheck_landsat.py yearly: independent Landsat 8/9 check -> data/validation/
 data/regions/               PMC and PCMC ward boundaries (see its README for sources)
-web/                        static dashboard in English and Marathi (web/i18n.js)
-.github/workflows/update.yml  runs the pipeline daily and deploys web/ to GitHub Pages
+web/                        dashboard and monthly report (report.html), English and Marathi (web/i18n.js)
+tests/                      uv run pytest: calculations and the published data
+.github/workflows/update.yml  tests, runs the pipeline daily and on every push, deploys web/ to GitHub Pages
 ```
 
 - **Imagery:** Sentinel-2 L2A (10 m, every ~5 days), free via Microsoft Planetary Computer.
@@ -55,6 +59,17 @@ web/                        static dashboard in English and Marathi (web/i18n.js
   river-wide and ±4.8 for a high-confidence stretch (80% range); the greenness cut-off is also tried
   at NDVI 0.25 and 0.35. Each figure's range spans both. Trends hold at either cut-off (correlation
   0.98); absolute levels move by about ±20%.
+- **Clean-up detection:** a stretch with at least 20% cover that drops 15+ points to half or less
+  within 3 weeks, stays low, outside the monsoon, is labelled by cause: "rain" (25 mm or more in
+  between, daily rainfall from NASA POWER, public domain), "river-wide" (30%+ of stretches with weed
+  dropped together: flow or wind) or "probable clean-up". Days until it grew back to half are tracked.
+- **Landsat check:** `crosscheck_landsat.py` measures the same pixels (at least 20 m inside the river)
+  from Landsat 8/9 within a day of a Sentinel-2 image. On the Mula-Mutha (82 pairs, 2017-2026)
+  stretches move together (correlation 0.78) but Landsat reads about 7 points higher at every level:
+  its 30 m pixels still catch bank plants on a 40-60 m river. It confirms direction, not level.
+- **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
+  month's average and range, change, river map, worst stretches, drops and data quality.
+- **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).
 - **Check it yourself:** every date stores the Sentinel-2 image it came from; the dashboard shows
   that photo for each stretch and links to ESA's Copernicus Browser at the same place and date.
 - **Change:** each stretch is compared against its value 30–60 days earlier, and the dashboard

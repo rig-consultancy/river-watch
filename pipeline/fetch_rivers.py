@@ -64,7 +64,9 @@ out tags geom;"""
         elif len(coords) >= 4 and coords[0] == coords[-1]:
             polys.append(Polygon(coords))
 
-    centreline = linemerge(unary_union(lines))
+    merged = unary_union(lines)
+    # linemerge only accepts several lines; a river mapped as one way is already merged.
+    centreline = linemerge(merged) if merged.geom_type == "MultiLineString" else merged
     # Keep only water polygons that touch the named river, not every pond.
     water = unary_union([p for p in polys if p.is_valid and p.distance(centreline) < 0.002])
     return {

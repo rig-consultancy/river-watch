@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>River Watch report</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="report.css">
+</head>
+<body class="report">
+<div class="report-controls no-print">
+  <label><span data-i18n="river">River</span> <select id="river"></select></label>
+  <label><span data-i18n="area">Area</span> <select id="region"></select></label>
+  <label><span data-i18n="r_month">Month</span> <select id="month"></select></label>
+  <div class="seg" role="group" aria-label="Language">
+    <button type="button" data-lang="en" lang="en">English</button>
+    <button type="button" data-lang="mr" lang="mr">मराठी</button>
+  </div>
+  <button type="button" class="btn" id="print" data-i18n="r_print">Print / save as PDF</button>
+  <a class="btn" href="./" data-i18n="r_back">Back to dashboard</a>
+</div>
+
+<main class="sheet" id="sheet"><p class="meta" id="status">Loading…</p></main>
+
+<script src="i18n.js"></script>
+<script src="report.js"></script>
+</body>
+</html>
