@@ -1,5 +1,14 @@
 {
  "flood_windows": {
+  "2024": [
+   "2024-10-30",
+   "2024-11-04",
+   "2024-11-09",
+   "2024-11-14",
+   "2024-11-19",
+   "2024-11-24",
+   "2024-11-29"
+  ],
   "2025": [
    "2025-10-17",
    "2025-10-20",
@@ -20,12 +29,20 @@
  },
  "flood_test": [
   {
+   "year": 2025,
+   "dry_green_px": 22821,
+   "cleared_px": 14418,
+   "stayed_px": 5542,
+   "channel_cleared_share": 0.98,
+   "green_channel_stayed_share": 0.7
+  },
+  {
    "year": 2026,
    "dry_green_px": 17706,
    "cleared_px": 7838,
    "stayed_px": 7977,
    "channel_cleared_share": 0.9,
-   "green_channel_stayed_share": 0.88
+   "green_channel_stayed_share": 0.87
   }
  ]
 }

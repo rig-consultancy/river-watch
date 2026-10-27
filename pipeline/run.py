@@ -97,6 +97,9 @@ def make_grid(aoi):
 
 
 def read_band(href, tf, w, h, resampling):
+    # Re-sign right before reading: links signed at search time expire (~1 h) during long backfills.
+    if "blob.core.windows.net" in href:
+        href = planetary_computer.sign_url(href.split("?")[0])
     with rasterio.open(href) as src, WarpedVRT(src, crs=UTM, transform=tf, width=w, height=h,
                                                 resampling=resampling) as vrt:
         return vrt.read(1)
@@ -690,7 +693,7 @@ def cleanup_events(dates, hy, sigma, rain, cfg):
     # How many stretches with something to lose dropped over each interval: many at once = river-wide.
     for e in drops:
         a, b = dates.index(e["from"]), dates.index(e["to"])
-        had = np.nanmax(hy[a:b + 1], axis=0) >= cfg["min_before"]
+        had = np.nan_to_num(hy[a:b + 1], nan=-1).max(axis=0) >= cfg["min_before"]
         same = sum(1 for o in drops if o["from"] >= e["from"] and o["to"] <= e["to"])
         mm = sum(v for d, v in rain.items() if e["from"] < d <= e["to"]) if rain else None
         e["rain_mm"] = None if mm is None else round(mm, 1)

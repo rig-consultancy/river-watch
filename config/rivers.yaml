@@ -14,13 +14,11 @@ rivers:
     name_mr: पवना (पिंपरी-चिंचवड)
     bbox: [73.66, 18.55, 73.85, 18.69]
     osm_names: "Pawana|Pavana|पवना"
-    draft: true              # being backfilled; scheduled runs skip it until this line goes
   - id: indrayani-pcmc
     name: Indrayani (Dehu-Alandi)
     name_mr: इंद्रायणी (देहू-आळंदी)
     bbox: [73.74, 18.65, 73.95, 18.75]
     osm_names: "Indrayani|इंद्रायणी"
-    draft: true
 
 # Detection thresholds (Sentinel-2 L2A surface reflectance).
 detection:
