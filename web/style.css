@@ -171,6 +171,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .conf-why { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .legend .sw.lowconf { background: var(--ramp-2); opacity: 0.45; }
 .legend .sw.green { background: repeating-linear-gradient(90deg, var(--series-3) 0 6px, transparent 6px 10px); }
+.legend .sw.rooted { background: repeating-linear-gradient(90deg, var(--clear) 0 6px, transparent 6px 10px); opacity: 0.8; }
 .legend .sw.none { background: repeating-linear-gradient(90deg, var(--clear) 0 1px, transparent 1px 5px); }
 
 .regions-panel { margin-bottom: 16px; }

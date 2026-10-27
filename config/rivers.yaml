@@ -32,6 +32,11 @@ river_mask:
   channel_m: 50              # keep only water areas within this distance of the centreline
   fill_holes_m2: 2000        # count gaps smaller than this inside the channel as river
   min_green_share: 0.6       # inside the OSM outline, never water but green this often: "green channel"
+  # Flood test for the green channel: green share in the first clear images after the monsoon.
+  flood_months: [10, 11]     # post-monsoon window
+  dry_months: [3, 4, 5, 6]   # dry season before it (for the whole-river evidence)
+  flood_stayed_above: 0.8    # still green this often after every flood: survived in place
+  flood_cleared_below: 0.2   # green less often than this after a flood: washed out
 
 # Sentinel-1 radar sees through clouds. Its hyacinth threshold is calibrated automatically
 # against days when an optical image was taken within radar_pair_days of a radar pass.

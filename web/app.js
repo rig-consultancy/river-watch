@@ -98,6 +98,7 @@ function drawLegend() {
     `<span><i class="sw lowconf"></i>${t("legend_lowconf")}</span>` +
     `<span><i class="sw none"></i>${t("legend_none")}</span>` +
     `<span><i class="sw green"></i>${t("legend_green")}</span>` +
+    `<span><i class="sw rooted"></i>${t("legend_rooted")}</span>` +
     (state.region !== "all" ? `<span><i class="sw other"></i>${t("legend_other_area")}</span>` : "");
 }
 
@@ -106,6 +107,9 @@ const valueAt = (id) => current.segment_history.hyacinth_pct[idx][id];
 
 function segStyle(f) {
   const p = f.properties, v = valueAt(p.id), mine = inRegion(p);
+  // Flood test says "rooted": almost certainly not hyacinth, so it recedes; otherwise it stands out.
+  if (greenChannel(p) && p.flood_test?.verdict === "rooted")
+    return { color: css("--clear"), weight: 4, opacity: mine ? 0.7 : 0.2, dashArray: "6 5", lineCap: "butt" };
   if (greenChannel(p)) return { color: css("--series-3"), weight: 5, opacity: mine ? 0.9 : 0.2, dashArray: "6 5", lineCap: "butt" };
   if (!p.measurable) return { color: css("--clear"), weight: 2, opacity: mine ? 0.6 : 0.2, dashArray: "1 5", lineCap: "round" };
   if (!mine) return { color: css("--clear"), weight: 2, opacity: 0.25, dashArray: null, lineCap: "round" };
@@ -116,6 +120,14 @@ function segStyle(f) {
 
 // Much of the channel green on nearly every clear image: weed or riverbed plants, can't tell from space.
 const greenChannel = (p) => (p.measurable ? (p.confidence_why || []).includes("green_channel") : p.why === "green_channel");
+
+// Flood test for a stretch's green-all-year area: verdict, plus the areas behind it.
+function floodFact(p) {
+  const f = p.flood_test;
+  if (!f) return "";
+  return `<div><dt>${t("f_flood")}</dt><dd><span class="conf conf-${f.verdict === "rooted" ? "medium" : "low"}">${t(`flood_${f.verdict}`)}</span>` +
+    `<span class="conf-why">${t(`flood_why_${f.verdict}`)} ${t("flood_areas", { s: nf(f.survived_ha), c: nf(f.cleared_ha), u: nf(f.unclear_ha) })}</span></dd></div>`;
+}
 
 // Confidence badge; with reasons it explains itself in a tooltip.
 function confBadge(p, long) {
@@ -143,8 +155,10 @@ function esaUrl(f, d) {
 const riverFeature = () => ({ geometry: { coordinates: current.segments.features.flatMap((f) => f.geometry.coordinates) } });
 
 function segTip(p) {
-  if (!p.measurable) return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${t(`why_${p.why}`)}</div>`;
-  const gc = greenChannel(p) ? `<div class="tt-sub">${t("tt_green_channel", { ha: nf(p.green_channel_ha) })}</div>` : "";
+  if (!p.measurable) return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${t(`why_${p.why}`)}</div>` +
+    (p.flood_test ? `<div class="tt-sub">${t(`tt_flood_${p.flood_test.verdict}`)}</div>` : "");
+  const gc = greenChannel(p) ? `<div class="tt-sub">${t("tt_green_channel", { ha: nf(p.green_channel_ha) })}` +
+    (p.flood_test ? ` ${t(`tt_flood_${p.flood_test.verdict}`)}` : "") + "</div>" : "";
   const v = valueAt(p.id), d = current.segment_history.dates[idx];
   const val = v == null ? t("legend_cloud") : `<span class="tt-val">${nf(v)}%</span>`;
   return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${val} ${confBadge(p)}</div>${gc}${p.unconfirmed && idx === current.segment_history.dates.length - 1
@@ -247,6 +261,7 @@ function drawDetail() {
   if (!p.measurable) {
     $("d-facts").innerHTML = `<div><dt>${t("f_area")}</dt><dd>${segAreaLabel(p)}</dd></div>` +
       (p.green_channel_ha ? `<div><dt>${t("f_green_channel")}</dt><dd>${t("ha_val", { ha: nf(p.green_channel_ha) })}</dd></div>` : "") +
+      floodFact(p) +
       `<p class="hint">${t(`why_${p.why}`)}</p>`;
     $("c-seg").innerHTML = "";
     $("d-photo").innerHTML = "";
@@ -268,6 +283,7 @@ function drawDetail() {
     fact(t("f_conf"), confBadge(p, true)),
     p.area_ha != null ? fact(t("f_area_ha"), t("ha_val", { ha: nf(p.area_ha) })) : "",
     p.green_channel_ha ? fact(t("f_green_channel"), t("ha_val", { ha: nf(p.green_channel_ha) })) : "",
+    floodFact(p),
   ].join("");
   // Photo: the slider's date if this stretch was clear then, else its last clear date.
   const sd = current.segment_history.dates[idx], d = valueAt(p.id) != null ? sd : p.date, scene = sceneOn(d);
@@ -514,6 +530,9 @@ function drawAbout() {
   const th = current.thresholds, look = current.outlook;
   const vars = { ndvi: nf(th.hyacinth_ndvi, 2), ndti: nf(th.turbid_ndti, 2), a: nf(look?.alert_pct ?? 30, 0),
     mae: nf(look?.mae_river), maes: nf(look?.mae_segment) };
+  const ft = current.flood_test?.flood_test?.at(-1);
+  if (ft) Object.assign(vars, { fy: ft.year, fn: nf(ft.dry_green_px, 0), fc: nf(ft.cleared_px, 0), fs: nf(ft.stayed_px, 0),
+    fch: nf(ft.channel_cleared_share * 100, 0), fgc: nf(ft.green_channel_stayed_share * 100, 0) });
   const u = current.uncertainty;
   if (u) Object.assign(vars, { rn: nf(u.river_noise_pts), rp: nf(u.river_pairs, 0), sh: nf(u.segment_noise_pts.high),
     nlo: nf(u.range_ndvi[0], 2), nhi: nf(u.range_ndvi[1], 2), nrej: nf((current.rejected_dates || []).length, 0),

@@ -31,10 +31,15 @@ web/                        static dashboard in English and Marathi (web/i18n.js
   weeks); bank trees, islands and dry vegetated riverbed never show water and drop out. On the
   Mula-Mutha this gives 4.1 km² of river, against 5.3 km² in the OSM outline. Rebuild it after each
   monsoon with `uv run python pipeline/build_river_mask.py`; `run.py` notices and rebuilds history.
-- **Green all year (needs a ground check):** inside the OSM outline, pixels that are green on most
+- **Green all year, and the flood test:** inside the OSM outline, pixels that are green on most
   clear dates and never open water (0.8 km² here, mostly Wakad–Balewadi and the upper Mutha) are not
-  counted. A channel permanently choked by weed and a riverbed overgrown with plants look the same
-  from space, so these stretches are flagged rather than ranked.
+  counted. On one image a channel choked by weed and a riverbed overgrown with plants look the same;
+  the monsoon tells them apart. Of 17,706 outline pixels green through the 2026 dry season, 7,838 were
+  gone in the first clear images after the flood and 7,977 were still there (few in between): 90% of
+  the hyacinth in the measured channel washed out, while 88% of the green-all-year area stayed. Floating
+  weed doesn't survive these floods in place, so each stretch's green area gets a verdict: likely
+  rooted plants (≥70% survived every flood), floating (≥50% washed out) or mixed. The other way an area
+  survives is a pocket the floods don't reach; that can't be told apart from space.
 - **Confidence per stretch:** high, medium or low from how much river area a stretch has, how much
   of it is on the river edge (mixed water/bank pixels), and how much of its channel is green all
   year. Low-confidence stretches are faded on the map and left out of the rankings.

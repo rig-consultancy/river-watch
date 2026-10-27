@@ -198,21 +198,23 @@ def river_mask_path(river_id: str) -> Path:
 
 
 def river_area(river_id: str, tf, w, h, mask, aoi):
-    """(river pixels, green-channel pixels, whether they come from the satellite-derived mask).
+    """(river pixels, green-channel classes, whether they come from the satellite-derived mask).
 
     Uses data/masks/<river>.tif (where the images actually showed water, see
     build_river_mask.py), or the OpenStreetMap outline until that has been built. Green-channel
-    pixels (inside the outline, green all year, never open water) are not measured, only reported.
+    pixels (inside the outline, green all year, never open water) are not measured, only reported;
+    their class is the flood test: 2 survived the floods in place, 3 cleared by one, 4 unclear,
+    0 elsewhere.
     """
     path = river_mask_path(river_id)
     if path.exists():
         with rasterio.open(path) as src:
             if (src.width, src.height) == (w, h) and src.transform.almost_equals(tf):
                 m = src.read(1)
-                return (m == 1) & mask, (m == 2) & mask, True
+                return (m == 1) & mask, np.where(mask & (m >= 2), m, 0), True
         print("  river mask does not match the grid; rebuild it with build_river_mask.py")
     osm = rasterize([(aoi, 1)], out_shape=(h, w), transform=tf, dtype="uint8").astype(bool) & mask
-    return osm, np.zeros_like(osm), False
+    return osm, np.zeros(osm.shape, "uint8"), False
 
 
 def process_day(px, keep, seg_idx, n_segs, det):
@@ -418,7 +420,10 @@ def run_river(river, cfg, since: date | None):
     write_web(river, cfg, segments, history, area={
         "px": np.bincount(seg_idx[keep], minlength=n),
         "edge_px": np.bincount(seg_idx[keep & edge], minlength=n),
-        "green_px": np.bincount(seg_idx[green_ch[mask]], minlength=n),
+        "green_px": np.bincount(seg_idx[green_ch[mask] > 0], minlength=n),
+        # Flood test for the green channel, per segment: survived / cleared / unclear pixels.
+        "flood_px": {k: np.bincount(seg_idx[green_ch[mask] == v], minlength=n)
+                     for k, v in (("survived", 2), ("cleared", 3), ("unclear", 4))},
         "from_images": from_images})
 
 
@@ -547,6 +552,22 @@ def confidence(px, edge_px, green_px, from_images, stale, cfg):
     return ("medium" if reasons else "high"), reasons
 
 
+def flood_verdict(px):
+    """Verdict for a segment's green channel from its flood-test pixel counts, or None.
+
+    "rooted": most of it (>= 70%) survived every monsoon flood in place, as rooted riverbed plants
+    do (or a pocket the floods don't reach); "floating": at least half was washed out, as
+    floating hyacinth is; "unclear": mostly pixels the test can't settle; otherwise "mixed".
+    """
+    total = sum(px.values())
+    if total < 20:
+        return None
+    share = {k: v / total for k, v in px.items()}
+    verdict = ("rooted" if share["survived"] >= 0.7 else "floating" if share["cleared"] >= 0.5
+               else "unclear" if share["unclear"] >= 0.5 else "mixed")
+    return {"verdict": verdict, **{f"{k}_ha": round(v * RES * RES / 1e4, 1) for k, v in px.items()}}
+
+
 def reject_dates(history, dates, cfg):
     """Dates to leave out, with the reason: "haze" or "cloud" (see the quality config)."""
     t = np.array([date.fromisoformat(d).toordinal() for d in dates])
@@ -668,8 +689,10 @@ def write_web(river, cfg, segments, history, area):
                 "regions": regions[i][0], "wards": regions[i][1],
                 "km": round(i * det["segment_length_m"] / 1000, 1),
                 "area_ha": round(float(area["px"][i]) * RES * RES / 1e4, 1),
-                # Channel green on nearly every clear image: weed or riverbed plants, needs a ground check.
-                "green_channel_ha": round(float(area["green_px"][i]) * RES * RES / 1e4, 1)}
+                # Channel green on nearly every clear image: weed or riverbed plants. The flood test
+                # says which: floating hyacinth is washed out by the monsoon, rooted plants stay.
+                "green_channel_ha": round(float(area["green_px"][i]) * RES * RES / 1e4, 1),
+                "flood_test": flood_verdict({k: int(v[i]) for k, v in area["flood_px"].items()})}
         if latest[i] is None:
             # Shown greyed out with the reason, rather than silently missing from the map.
             features.append({"type": "Feature", "geometry": mapping(geom), "properties": {
@@ -726,6 +749,9 @@ def write_web(river, cfg, segments, history, area):
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "latest_date": dates[-1],
         "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"]},
+        # Whole-river evidence behind the flood test (see build_river_mask.py).
+        "flood_test": (json.loads(river_mask_path(river["id"]).with_suffix(".json").read_text())
+                       if river_mask_path(river["id"]).with_suffix(".json").exists() else None),
         "river_area": {"from_images": area["from_images"],
                        "km2": round(float(area["px"].sum()) * RES * RES / 1e6, 2),
                        "green_channel_km2": round(float(area["green_px"].sum()) * RES * RES / 1e6, 2)},
