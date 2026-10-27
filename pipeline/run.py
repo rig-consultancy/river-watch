@@ -46,7 +46,7 @@ SCL_OK = [2, 4, 5, 6, 7]
 RADAR_EDGES = np.round(np.arange(-35, 5.001, 0.25), 2)
 # Bump when the way history numbers are computed changes; run.py then rebuilds the optical
 # history (from the local pixel cache where it exists).
-METHOD = 2
+METHOD = 3
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
@@ -162,6 +162,25 @@ def day_pixels(river_id: str, d: str, items, tf, w, h, mask):
     return {k: v.astype("float32") for k, v in px.items()}
 
 
+def day_quality(river_id: str, d: str, items, tf, w, h, mask):
+    """Haze and cloud around the river on one date, as reported with the image itself.
+
+    aot: mean aerosol optical thickness (haze; usually 0.1-0.6 here). cloud_share: share of the
+    river corridor flagged as cloud, thin cirrus or cloud shadow; their edges leak into nearby
+    pixels. Cached in data/cache/<river>/quality.json.
+    """
+    path = ROOT / f"data/cache/{river_id}/quality.json"
+    q = json.loads(path.read_text()) if path.exists() else {}
+    if d not in q:
+        aot = read_band(items[0].assets["AOT"].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
+        scl = read_band(items[0].assets["SCL"].href, tf, w, h, Resampling.nearest)[mask]
+        q[d] = {"aot": round(float(aot[aot > 0].mean()) / 1000, 3) if (aot > 0).any() else None,
+                "cloud_share": round(float(np.isin(scl, [3, 8, 9, 10]).mean()), 3)}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(q, indent=0, sort_keys=True))
+    return q[d]
+
+
 def classify(px, det):
     """Return (ok, hyacinth, water) for the pixel vectors from day_pixels.
 
@@ -207,9 +226,15 @@ def process_day(px, keep, seg_idx, n_segs, det):
     if valid_fraction < det["min_valid_fraction"]:
         return None
     ndti = px["ndti"]
+    # The same count at a stricter and a looser greenness threshold, for the likely range.
+    delta = det["range_ndvi_delta"]
+    hy_strict = ok & (px["ndvi"] > det["hyacinth_ndvi"] + delta)
+    hy_loose = ok & (px["ndvi"] > det["hyacinth_ndvi"] - delta)
 
     total = np.bincount(seg_idx[ok], minlength=n_segs)
     hy_count = np.bincount(seg_idx[hyacinth], minlength=n_segs)
+    strict_count = np.bincount(seg_idx[hy_strict], minlength=n_segs)
+    loose_count = np.bincount(seg_idx[hy_loose], minlength=n_segs)
     w_count = np.bincount(seg_idx[water], minlength=n_segs)
     nt_sum = np.bincount(seg_idx[water], weights=ndti[water], minlength=n_segs)
     all_count = np.bincount(seg_idx[keep], minlength=n_segs)
@@ -220,13 +245,16 @@ def process_day(px, keep, seg_idx, n_segs, det):
             segs.append(None)
         else:
             nt = round(float(nt_sum[i] / w_count[i]), 4) if w_count[i] >= 5 else None
-            segs.append([round(float(hy_count[i] / total[i]), 3), nt])
+            segs.append([round(float(hy_count[i] / total[i]), 3), nt,
+                         round(float(strict_count[i] / total[i]), 3), round(float(loose_count[i] / total[i]), 3)])
     # Too little open water (low flow, river choked by weed) gives no reliable muddiness figure.
     enough_water = water.sum() >= max(50, 0.05 * ok.sum())
     return {
         "valid_fraction": round(float(valid_fraction), 3),
         "hyacinth_km2": round(float(hyacinth.sum()) * RES * RES / 1e6, 4),
         "hyacinth_pct": round(float(hyacinth.sum() / ok.sum() * 100), 2),
+        "hyacinth_pct_strict": round(float(hy_strict.sum() / ok.sum() * 100), 2),
+        "hyacinth_pct_loose": round(float(hy_loose.sum() / ok.sum() * 100), 2),
         "open_water_pct": round(float(water.sum() / ok.sum() * 100), 2),
         "mean_ndti": round(float(ndti[water].mean()), 4) if enough_water else None,
         "turbid_pct": round(float((ndti[water] > det["turbid_ndti"]).mean() * 100), 2) if enough_water else None,
@@ -367,6 +395,8 @@ def run_river(river, cfg, since: date | None):
         try:
             px = day_pixels(river["id"], d, items, tf, w, h, mask)
             res = process_day(px, keep, seg_idx, len(segments), det)
+            if res is not None:
+                res.update(day_quality(river["id"], d, items, tf, w, h, mask))
         except Exception as e:  # one bad scene must not stop the scheduled run
             print(f"  {d}: error {type(e).__name__}: {e}")
             continue
@@ -517,42 +547,118 @@ def confidence(px, edge_px, green_px, from_images, stale, cfg):
     return ("medium" if reasons else "high"), reasons
 
 
+def reject_dates(history, dates, cfg):
+    """Dates to leave out, with the reason: "haze" or "cloud" (see the quality config)."""
+    t = np.array([date.fromisoformat(d).toordinal() for d in dates])
+    z = np.zeros(len(dates))
+    for key in ("open_water_pct", "hyacinth_pct"):
+        v = np.array([history["dates"][d][key] for d in dates], float)
+        dev = np.full(len(dates), np.nan)
+        for i in range(len(dates)):
+            near = (np.abs(t - t[i]) <= 21) & (np.arange(len(dates)) != i)
+            if near.sum() >= 2:
+                dev[i] = v[i] - np.median(v[near])
+        scale = 1.4826 * np.nanmedian(np.abs(dev))  # robust standard deviation
+        z = np.fmax(z, np.abs(dev) / scale) if scale else z
+    out = {}
+    for i, d in enumerate(dates):
+        e = history["dates"][d]
+        if (e.get("aot") or 0) > cfg["max_aot"]:
+            out[d] = "haze"
+        elif (e.get("cloud_share") or 0) >= cfg["cloud_share"] and z[i] > cfg["max_z"]:
+            out[d] = "cloud"
+    return out
+
+
+def one_off_jumps(dates, hy, cfg):
+    """(spike, unconfirmed): readings that jump away and straight back, and latest readings
+    that jump with no later image yet to confirm them. hy: % per date x segment (NaN = none)."""
+    t = np.array([date.fromisoformat(d).toordinal() for d in dates])
+    th = cfg["spike_pts"]
+    spike = np.zeros(hy.shape, bool)
+    unconfirmed = np.zeros(hy.shape[1], bool)
+    for k in range(hy.shape[1]):
+        seen = np.nonzero(np.isfinite(hy[:, k]))[0]
+        for a, b, c in zip(seen, seen[1:], seen[2:]):
+            if t[b] - t[a] > 14 or t[c] - t[b] > 14:
+                continue
+            p, v, n = hy[a, k], hy[b, k], hy[c, k]
+            if abs(v - p) > th and abs(v - n) > th and np.sign(v - p) == np.sign(v - n) and abs(p - n) < th / 2:
+                spike[b, k] = True
+        if len(seen) >= 4 and t[seen[-1]] - t[seen[-2]] <= 14:
+            unconfirmed[k] = abs(hy[seen[-1], k] - np.median(hy[seen[-4:-1], k])) > th
+    return spike, unconfirmed
+
+
+def repeat_noise(dates, values):
+    """Typical measurement noise of one reading, from images taken 3 days or less apart.
+
+    Hyacinth hardly changes in 3 days, so their difference is mostly noise. For two readings with
+    independent errors, mean |difference| = 2 sigma / sqrt(pi). Returns (sigma, number of pairs).
+    """
+    t = [date.fromisoformat(d) for d in dates]
+    diffs = []
+    for i in range(len(dates) - 1):
+        if (t[i + 1] - t[i]).days <= 3:
+            a, b = values[i], values[i + 1]
+            ok = np.isfinite(a) & np.isfinite(b)
+            diffs.extend(np.abs(np.asarray(a)[ok] - np.asarray(b)[ok]).ravel())
+    return (float(np.mean(diffs)) * np.sqrt(np.pi) / 2, len(diffs)) if diffs else (None, 0)
+
+
 def write_web(river, cfg, segments, history, area):
-    det, rad = cfg["detection"], cfg.get("radar")
+    det, rad, qual = cfg["detection"], cfg.get("radar"), cfg["quality"]
     seg_px = area["px"]
-    dates = sorted(history["dates"])
+    all_dates = sorted(history["dates"])
     places = segment_places(river, segments)
     regions = segment_regions(segments, cfg.get("regions", []))
-    if not dates:
+    if not all_dates:
         print("  no usable dates yet")
         return
-    # Hyacinth % per date x segment (NaN where cloudy), the base for everything below.
-    hy = np.array([[np.nan if v is None else v[0] * 100 for v in history["dates"][d]["segments"]]
-                   for d in dates])
-    # Latest known value per segment (a cloudy segment falls back to its previous observation).
-    latest = [None] * len(segments)
-    for d in dates:
-        for i, v in enumerate(history["dates"][d]["segments"]):
-            if v is not None:
-                latest[i] = (d, v)
+    rejected = reject_dates(history, all_dates, qual)
+    dates = [d for d in all_dates if d not in rejected]
+    # Hyacinth % per date x segment (NaN where cloudy), at the standard, strict and loose
+    # thresholds; the base for everything below.
+    def matrix(j):
+        return np.array([[np.nan if v is None else v[j] * 100 for v in history["dates"][d]["segments"]]
+                         for d in dates])
+    hy_raw, hy_strict, hy_loose = matrix(0), matrix(2), matrix(3)
+    spike, unconfirmed = one_off_jumps(dates, hy_raw, qual)
+    hy = np.where(spike, np.nan, hy_raw)  # one-off jumps are shown but not used in any figure
 
-    # Change vs ~30 days earlier, per segment (only from observations 30-60 days old).
     last = date.fromisoformat(dates[-1])
-    ref_cut = (last - timedelta(days=30)).isoformat()
-    ref_start = (last - timedelta(days=60)).isoformat()
+    latest = [None] * len(segments)  # (date index) of the latest usable reading per segment
+    for i in range(len(dates)):
+        for k in np.nonzero(np.isfinite(hy[i]))[0]:
+            latest[k] = i
+    # Change vs ~30 days earlier, per segment (only from observations 30-60 days old).
+    t = np.array([(last - date.fromisoformat(d)).days for d in dates])
     previous = [None] * len(segments)
-    for d in dates:
-        if d > ref_cut:
-            break
-        if d < ref_start:
-            continue
-        for i, v in enumerate(history["dates"][d]["segments"]):
-            if v is not None:
-                previous[i] = v
+    for i in np.nonzero((t >= 30) & (t <= 60))[0]:
+        for k in np.nonzero(np.isfinite(hy[i]))[0]:
+            previous[k] = hy[i, k]
 
     out_cfg = cfg.get("outlook")
-    look, seg_look = outlook(dates, hy, [history["dates"][d]["hyacinth_pct"] for d in dates], out_cfg) \
-        if out_cfg else (None, [None] * len(segments))
+    river_pct = [history["dates"][d]["hyacinth_pct"] for d in dates]
+    look, seg_look = outlook(dates, hy, river_pct, out_cfg) if out_cfg else (None, [None] * len(segments))
+
+    # Confidence first: the likely range of a stretch depends on the noise of its class.
+    conf = {}
+    for k in range(len(segments)):
+        if latest[k] is not None:
+            stale = (last - date.fromisoformat(dates[latest[k]])).days > 30
+            conf[k] = confidence(int(area["px"][k]), int(area["edge_px"][k]), int(area["green_px"][k]),
+                                 area["from_images"], stale, cfg["confidence"])
+    z80 = 1.2816  # half-width of an 80% range, in standard deviations
+    river_sigma, river_pairs = repeat_noise(dates, [np.array([v]) for v in river_pct])
+    seg_sigma = {}
+    for level in ("high", "medium", "low"):
+        cols = [k for k, (c, _) in conf.items() if c == level]
+        seg_sigma[level] = repeat_noise(dates, list(hy[:, cols])) if cols else (None, 0)
+
+    def likely(lo_val, hi_val, sigma):
+        pad = z80 * (sigma or 0)
+        return [round(max(0.0, lo_val - pad), 1), round(min(100.0, hi_val + pad), 1)]
 
     features = []
     for i, seg in enumerate(segments):
@@ -571,21 +677,24 @@ def write_web(river, cfg, segments, history, area):
                 "why": "green_channel" if area["green_px"][i] >= 20 else
                        "narrow" if area["px"][i] < 5 else "no_clear_view"}})
             continue
-        d, (h, nt) = latest[i]
+        j = latest[i]
+        d, h = dates[j], hy[j, i]
+        nt = history["dates"][d]["segments"][i][1]
+        c, why = conf[i]
         prev = previous[i]
-        stale = (last - date.fromisoformat(d)).days > 30
-        conf, why = confidence(int(area["px"][i]), int(area["edge_px"][i]), int(area["green_px"][i]),
-                               area["from_images"], stale, cfg["confidence"])
         features.append({
             "type": "Feature",
             "geometry": mapping(geom),
             "properties": {
                 **base, "measurable": True, "date": d,
-                "hyacinth_pct": round(h * 100, 1),
+                "hyacinth_pct": round(float(h), 1),
+                "range": likely(hy_strict[j, i], hy_loose[j, i], seg_sigma[c][0]),
+                # Latest reading jumped and no later image has confirmed it yet.
+                "unconfirmed": bool(unconfirmed[i]) and j == len(dates) - 1,
                 "ndti": nt,
-                "change_pct": None if prev is None else round((h - prev[0]) * 100, 1),
+                "change_pct": None if prev is None else round(float(h - prev), 1),
                 "outlook": seg_look[i],
-                "confidence": conf, "confidence_why": why,
+                "confidence": c, "confidence_why": why,
             },
         })
 
@@ -605,9 +714,12 @@ def write_web(river, cfg, segments, history, area):
             "series": [{"date": d, "hyacinth_pct": round(float(v), 2)} for d, v, k in zip(dates, val, ok) if k],
         })
 
-    keys = ("hyacinth_pct", "hyacinth_km2", "open_water_pct", "turbid_pct", "mean_ndti", "valid_fraction")
+    keys = ("hyacinth_pct", "hyacinth_km2", "open_water_pct", "turbid_pct", "mean_ndti", "valid_fraction",
+            "aot", "cloud_share")
     # scene: the Sentinel-2 image behind each date, so anyone can look at the photo itself.
     series = [{"date": d, **{k: history["dates"][d].get(k) for k in keys},
+               "range": likely(history["dates"][d]["hyacinth_pct_strict"], history["dates"][d]["hyacinth_pct_loose"],
+                               river_sigma),
                "scene": history["dates"][d]["scenes"][0]} for d in dates]
     out = {
         "river": {"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"), "bbox": river["bbox"]},
@@ -619,14 +731,30 @@ def write_web(river, cfg, segments, history, area):
                        "green_channel_km2": round(float(area["green_px"].sum()) * RES * RES / 1e6, 2)},
         "segments": {"type": "FeatureCollection", "features": features},
         "series": series,
-        "regions": region_out,
-        # Every segment's hyacinth % on every clear date, for the map's date slider.
+        # Images left out of every figure, and why (shown in the data table).
+        "rejected_dates": [{"date": d, "reason": rejected[d], "aot": history["dates"][d].get("aot"),
+                            "cloud_share": history["dates"][d].get("cloud_share"),
+                            "hyacinth_pct": history["dates"][d]["hyacinth_pct"],
+                            "scene": history["dates"][d]["scenes"][0]} for d in sorted(rejected)],
+        # How far apart two images of the same thing land, and how the greenness threshold
+        # moves the figures; together they make the likely ranges.
+        "uncertainty": {
+            "range_ndvi": [round(det["hyacinth_ndvi"] - det["range_ndvi_delta"], 2),
+                           round(det["hyacinth_ndvi"] + det["range_ndvi_delta"], 2)],
+            "river_noise_pts": None if river_sigma is None else round(z80 * river_sigma, 1),
+            "river_pairs": river_pairs,
+            "segment_noise_pts": {k: None if v[0] is None else round(z80 * v[0], 1) for k, v in seg_sigma.items()},
+            "one_off_jumps": int(spike.sum()), "readings": int(np.isfinite(hy_raw).sum()),
+        },
+        # Every segment's hyacinth % on every clear date, for the map's date slider; one-off
+        # jumps are kept here (marked) so they can be seen, but not used elsewhere.
         "segment_history": {"dates": dates, "hyacinth_pct": [
-            [None if np.isnan(v) else round(float(v), 1) for v in row] for row in hy]},
+            [None if np.isnan(v) else round(float(v), 1) for v in row] for row in hy_raw],
+            "one_off": [[int(i), int(k)] for i, k in zip(*np.nonzero(spike))]},
     }
     if look:
         out["outlook"] = look
-    cal = calibrate_radar(history, rad) if rad else None
+    cal = calibrate_radar({**history, "dates": {d: history["dates"][d] for d in dates}}, rad) if rad else None
     if cal:
         out["radar"] = {
             "threshold_db": cal["threshold_db"], "pairs": cal["pairs"], "mae_pct": cal["mae_pct"],

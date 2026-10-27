@@ -16,6 +16,7 @@ detection:
   hyacinth_ndvi: 0.30        # floating vegetation on water
   turbid_ndti: 0.05          # (red - green) / (red + green) on open water; higher = muddier
   water_ndwi: 0.0            # (green - nir) / (green + nir) above this = open water
+  range_ndvi_delta: 0.05     # likely range also counts hyacinth at NDVI 0.25 and 0.35
   segment_length_m: 500      # river is split into segments of this length
   river_buffer_m: 25         # half-width used when OSM has only a centreline
   corridor_m: 150            # search this far either side of the centreline for the real channel
@@ -48,6 +49,17 @@ confidence:
   high_edge_share: 0.5
   low_edge_share: 0.75
   green_channel_share: 0.3   # flag a stretch when this much of its channel is green all year
+
+# Bad images and one-off jumps. A date is left out for heavy haze (aerosol optical thickness
+# above max_aot; normal here is 0.1-0.6), or when cloud covers at least cloud_share of the river
+# corridor AND its river-wide figures differ from the images within 3 weeks by more than max_z
+# robust standard deviations. A stretch reading is a one-off jump when it differs by more than
+# spike_pts from both neighbouring readings (each within 2 weeks) while those two agree.
+quality:
+  max_aot: 0.8
+  cloud_share: 0.1
+  max_z: 3
+  spike_pts: 15
 
 # Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
 # banks fall in both is a border stretch and counts towards both). See data/regions/README.md.

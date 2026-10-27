@@ -147,7 +147,8 @@ function segTip(p) {
   const gc = greenChannel(p) ? `<div class="tt-sub">${t("tt_green_channel", { ha: nf(p.green_channel_ha) })}</div>` : "";
   const v = valueAt(p.id), d = current.segment_history.dates[idx];
   const val = v == null ? t("legend_cloud") : `<span class="tt-val">${nf(v)}%</span>`;
-  return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${val} ${confBadge(p)}</div>${gc}<div class="tt-sub">${fmtDate(d)}</div>`;
+  return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${val} ${confBadge(p)}</div>${gc}${p.unconfirmed && idx === current.segment_history.dates.length - 1
+    ? `<div class="tt-sub">${t("unconfirmed")}</div>` : ""}<div class="tt-sub">${fmtDate(d)}</div>`;
 }
 
 function drawSegments(fit) {
@@ -198,10 +199,12 @@ function drawList() {
   const list = $("hotspots");
   // Rankings use only stretches we can stand behind; low-confidence ones stay on the map, faded.
   const feats = current.segments.features.map((f) => f.properties)
-    .filter((p) => inRegion(p) && p.measurable && p.confidence !== "low");
+    .filter((p) => inRegion(p) && p.measurable && p.confidence !== "low" && !p.unconfirmed);
+  const waiting = current.segments.features.filter((f) => inRegion(f.properties) && f.properties.unconfirmed).length;
   const look = current.outlook;
-  $("list-hint").textContent = listMode === "risk" && look?.alert_pct
-    ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : t("hint_list");
+  $("list-hint").textContent = (listMode === "risk" && look?.alert_pct
+    ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : t("hint_list")) +
+    (waiting ? " " + t("hint_unconfirmed", { n: nf(waiting, 0) }) : "");
   let rows;
   if (listMode === "risk") {
     rows = feats.filter((p) => p.outlook).sort((a, b) => b.outlook.p_alert - a.outlook.p_alert || b.outlook.pct - a.outlook.pct)
@@ -254,7 +257,9 @@ function drawDetail() {
   $("d-facts").innerHTML = [
     fact(t("f_area"), segAreaLabel(p)),
     p.wards.length ? fact(t("f_ward"), p.wards.join(" / ")) : "",
-    fact(t("f_now"), `<strong>${nf(p.hyacinth_pct)}%</strong>`),
+    fact(t("f_now"), `<strong>${nf(p.hyacinth_pct)}%</strong>` +
+      (p.range ? ` <span class="muted">${t("likely", { lo: nf(p.range[0]), hi: nf(p.range[1]) })}</span>` : "") +
+      (p.unconfirmed ? `<span class="conf-why">${t("unconfirmed")}</span>` : "")),
     fact(t("f_seen"), fmtDate(p.date)),
     fact(t("f_change"), change),
     p.outlook ? fact(t("f_outlook"), `~${nf(p.outlook.pct)}%`) : "",
@@ -271,8 +276,11 @@ function drawDetail() {
       <figcaption>${t("photo_title", { date: fmtDate(d) })} · ${t("photo_note")}
         <a href="${esaUrl(f, d)}" target="_blank" rel="noopener">${t("open_esa")}</a></figcaption></figure>` : "";
   const sh = current.segment_history;
-  const rows = sh.dates.map((d, i) => ({ date: d, v: sh.hyacinth_pct[i][p.id] })).filter((r) => r.v != null);
-  lineChart($("c-seg"), [{ name: segName(p), cls: "opt", rows, key: "v" }], t("f_now"));
+  const jumps = new Set((sh.one_off || []).filter(([, k]) => k === p.id).map(([i]) => i));
+  const rows = sh.dates.map((d, i) => ({ date: d, v: sh.hyacinth_pct[i][p.id], jump: jumps.has(i) })).filter((r) => r.v != null);
+  const layers = [{ name: t("l_optical"), cls: "opt", rows: rows.filter((r) => !r.jump), key: "v" }];
+  if (jumps.size) layers.push({ name: t("l_jumps"), cls: "jump", rows: rows.filter((r) => r.jump), key: "v", dotsOnly: true });
+  lineChart($("c-seg"), layers, t("f_now"));
 }
 
 // ---------- line chart ----------
@@ -298,7 +306,8 @@ function lineChart(el, layers, label) {
   }
   const all = L.flatMap((l) => l.pts);
   const t0 = Math.min(...all.map((p) => p.t)), t1 = Math.max(...all.map((p) => p.t));
-  const vmax = niceMax(Math.max(...all.map((p) => p.v)));
+  const bandMax = L.flatMap((l) => (l.band ? l.pts.map((p) => p.d[l.band]?.[1] ?? p.v) : []));
+  const vmax = niceMax(Math.max(...all.map((p) => p.v), ...bandMax));
   const x = (tt) => m.l + ((tt - t0) / (t1 - t0)) * iw;
   const y = (v) => m.t + ih - (v / vmax) * ih;
 
@@ -318,12 +327,17 @@ function lineChart(el, layers, label) {
       prev = p;
     });
     if (!runs[runs.length - 1].length) runs.pop();
-    const area = li ? "" : `<path class="area" d="${runs.filter((r) => r.length > 1)
+    // Likely range as a shaded band (instead of the plain area fill) when the layer has one.
+    const band = !l.band ? "" : `<path class="band" d="${runs.filter((r) => r.length > 1).map((r) =>
+      r.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.d[l.band][1]).toFixed(1)}`).join("") +
+      [...r].reverse().map((p) => `L${x(p.t).toFixed(1)},${y(p.d[l.band][0]).toFixed(1)}`).join("") + "Z").join("")}"/>`;
+    const area = li || l.band ? "" : `<path class="area" d="${runs.filter((r) => r.length > 1)
       .map((r) => `${seg(r)}L${x(r[r.length - 1].t)},${y(0)}L${x(r[0].t)},${y(0)}Z`).join("")}"/>`;
-    // Primary: dots only where a point stands alone. Radar: a marker on every (sparser) estimate.
-    const dots = l.cls === "rad" ? l.pts : runs.filter((r) => r.length === 1).map((r) => r[0]);
+    // Primary: dots only where a point stands alone. Radar and dots-only layers: every point.
+    const dots = l.cls === "rad" || l.dotsOnly ? l.pts : runs.filter((r) => r.length === 1).map((r) => r[0]);
     const last = l.pts[l.pts.length - 1];
-    return `${area}<path class="line ${l.cls}" d="${runs.map(seg).join("")}"/>
+    if (l.dotsOnly) return dots.map((p) => `<circle class="dot ${l.cls}" cx="${x(p.t)}" cy="${y(p.v)}" r="4"/>`).join("");
+    return `${band}${area}<path class="line ${l.cls}" d="${runs.map(seg).join("")}"/>
       ${dots.map((p) => `<circle class="dot ${l.cls}" cx="${x(p.t)}" cy="${y(p.v)}" r="${li ? 3 : 4}"/>`).join("")}
       ${li ? `<circle class="dot ${l.cls}" cx="${x(last.t)}" cy="${y(last.v)}" r="4"/>` : ""}`;
   }).join("");
@@ -360,7 +374,8 @@ function lineChart(el, layers, label) {
       rings[i].setAttribute("cy", y(p.v));
       const name = L.length > 1 ? `<i class="key ${l.cls}"></i>${l.name}` : label;
       const when = p.t !== at ? ` (${fmtDate(p.d.date)})` : "";
-      rowsHtml.push(`<div>${name}: <span class="tt-val">${nf(p.v)}%</span>${when}</div>${l.tip ? l.tip(p.d) : ""}`);
+      const rng = l.band && p.d[l.band] ? ` <span class="tt-sub">${t("likely", { lo: nf(p.d[l.band][0]), hi: nf(p.d[l.band][1]) })}</span>` : "";
+      rowsHtml.push(`<div>${name}: <span class="tt-val">${nf(p.v)}%</span>${rng}${when}</div>${l.tip ? l.tip(p.d) : ""}`);
     });
     showTip(`<div class="tt-title">${fmtDate(isoLocal(at))}</div>${rowsHtml.join("")}`, ev.clientX, ev.clientY);
   };
@@ -410,7 +425,7 @@ function drawTiles() {
   $("t-pct-note").textContent = reg ? t("n_pct_region", { area: regionName(reg) })
     : radarLast && radarLast.date > last.date
       ? t("n_pct_radar", { date: fmtDate(last.date), rdate: fmtDate(radarLast.date), rpct: nf(radarLast.hyacinth_pct) })
-      : t("n_pct");
+      : now?.range ? t("n_pct_range", { lo: nf(now.range[0]), hi: nf(now.range[1]) }) : t("n_pct");
   $("t-area").textContent = nf(last.hyacinth_km2, 2);
   $("t-area-note").textContent = reg ? t("n_area_whole") : t("n_area");
 
@@ -445,7 +460,7 @@ function drawRegions() {
   $("regions").querySelector("tbody").innerHTML = current.regions.map((r) => {
     const rows = r.series, now = rows[rows.length - 1];
     const yr = now && closestTo(rows, toT(now.date) - 365 * dayMs, 21);
-    const mine = feats.filter((p) => p.measurable && p.confidence !== "low" && (r.id === "other" ? !p.regions.length : p.regions.includes(r.id)));
+    const mine = feats.filter((p) => p.measurable && p.confidence !== "low" && !p.unconfirmed && (r.id === "other" ? !p.regions.length : p.regions.includes(r.id)));
     const worst = mine.reduce((a, p) => (!a || p.hyacinth_pct > a.hyacinth_pct ? p : a), null);
     const name = r.id === "other" ? t("outside") : regionName(r);
     return `<tr class="${state.region === r.id ? "on" : ""}" data-region="${r.id}">
@@ -466,7 +481,7 @@ function drawCharts() {
   if (!current) return;
   const optical = (key) => ({ name: t("l_optical"), cls: "opt", rows: current.series, key,
     tip: (s) => `<div class="tt-sub">${t("tt_cloudfree", { p: nf(s.valid_fraction * 100, 0) })}</div>` });
-  const hy = [optical("hyacinth_pct")];
+  const hy = [{ ...optical("hyacinth_pct"), band: "range" }];
   const reg = selectedRegion();
   if (reg) {
     hy[0].name = t("l_whole");
@@ -483,11 +498,15 @@ function drawCharts() {
 function drawTable() {
   const rows = {};
   current.series.forEach((s) => (rows[s.date] = { ...s }));
+  (current.rejected_dates || []).forEach((r) => (rows[r.date] = { ...r, rejected: true }));
   (current.radar?.series || []).forEach((r) => (rows[r.date] = { ...rows[r.date], date: r.date, radar_pct: r.hyacinth_pct }));
   const cell = (v, d = 1) => `<td>${v == null ? "" : nf(v, d)}</td>`;
   document.querySelector("#table tbody").innerHTML = Object.values(rows)
     .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .map((s) => `<tr><td>${fmtDate(s.date)}</td>${cell(s.hyacinth_pct)}${cell(s.radar_pct)}${cell(s.hyacinth_km2, 3)}${cell(s.open_water_pct)}${cell(s.turbid_pct)}${cell(s.valid_fraction == null ? null : s.valid_fraction * 100, 0)}<td>${s.scene ? `<a href="${photoUrl(s.scene, riverFeature(), 0.005)}" target="_blank" rel="noopener">${t("photo_link")}</a>` : ""}</td></tr>`)
+    .map((s) => s.rejected ? `<tr class="rejected"><td>${fmtDate(s.date)}</td><td colspan="6">${t(`rejected_${s.reason}`,
+        { aot: nf(s.aot, 2), c: nf((s.cloud_share || 0) * 100, 0), pct: nf(s.hyacinth_pct) })}</td>` +
+        `<td><a href="${photoUrl(s.scene, riverFeature(), 0.005)}" target="_blank" rel="noopener">${t("photo_link")}</a></td></tr>`
+      : `<tr><td>${fmtDate(s.date)}</td>${cell(s.hyacinth_pct)}${cell(s.radar_pct)}${cell(s.hyacinth_km2, 3)}${cell(s.open_water_pct)}${cell(s.turbid_pct)}${cell(s.valid_fraction == null ? null : s.valid_fraction * 100, 0)}<td>${s.scene ? `<a href="${photoUrl(s.scene, riverFeature(), 0.005)}" target="_blank" rel="noopener">${t("photo_link")}</a>` : ""}</td></tr>`)
     .join("");
 }
 
@@ -495,6 +514,10 @@ function drawAbout() {
   const th = current.thresholds, look = current.outlook;
   const vars = { ndvi: nf(th.hyacinth_ndvi, 2), ndti: nf(th.turbid_ndti, 2), a: nf(look?.alert_pct ?? 30, 0),
     mae: nf(look?.mae_river), maes: nf(look?.mae_segment) };
+  const u = current.uncertainty;
+  if (u) Object.assign(vars, { rn: nf(u.river_noise_pts), rp: nf(u.river_pairs, 0), sh: nf(u.segment_noise_pts.high),
+    nlo: nf(u.range_ndvi[0], 2), nhi: nf(u.range_ndvi[1], 2), nrej: nf((current.rejected_dates || []).length, 0),
+    nj: nf(u.one_off_jumps, 0), nr: nf(u.readings, 0) });
   document.querySelectorAll("[data-i18n-html]").forEach((el) => (el.innerHTML = t(el.dataset.i18nHtml, vars)));
   const el = $("radar-about");
   el.hidden = !current.radar;

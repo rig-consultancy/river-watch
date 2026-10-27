@@ -38,6 +38,18 @@ web/                        static dashboard in English and Marathi (web/i18n.js
 - **Confidence per stretch:** high, medium or low from how much river area a stretch has, how much
   of it is on the river edge (mixed water/bank pixels), and how much of its channel is green all
   year. Low-confidence stretches are faded on the map and left out of the rankings.
+- **Bad images:** a date is left out for heavy haze (aerosol optical thickness above 0.8, from the
+  image's own AOT band; normal here is 0.1–0.6), or when cloud, thin cirrus or cloud shadow covers at
+  least 10% of the river corridor *and* its river-wide figures disagree with images within 3 weeks by
+  more than 3 robust standard deviations. So far: 3 Jan 2026 (haze), 17 Jun 2026 and 10 Oct 2025
+  (cloud). They are listed, with the reason, in the dashboard's data table.
+- **One-off jumps:** a stretch reading more than 15 points away from both neighbouring readings (each
+  within 2 weeks, and agreeing with each other) is shown but not used (95 of 5,642 readings). A
+  sudden jump in the latest image is kept out of the rankings until the next image confirms it.
+- **Likely ranges:** measured, not assumed. Images taken 3 days or less apart differ by ±3.2 points
+  river-wide and ±4.8 for a high-confidence stretch (80% range); the greenness cut-off is also tried
+  at NDVI 0.25 and 0.35. Each figure's range spans both. Trends hold at either cut-off (correlation
+  0.98); absolute levels move by about ±20%.
 - **Check it yourself:** every date stores the Sentinel-2 image it came from; the dashboard shows
   that photo for each stretch and links to ESA's Copernicus Browser at the same place and date.
 - **Change:** each stretch is compared against its value 30–60 days earlier, and the dashboard
