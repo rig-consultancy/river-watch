@@ -5,6 +5,7 @@ name: Update river data
 on:
   schedule:
     - cron: "30 1 * * *"   # daily 07:00 IST; Sentinel-2 passes every few days, extra runs are cheap no-ops
+    - cron: "0 2 15 10 *"  # 15 Oct: after the monsoon, rebuild the river area and flood test
   push:                    # publish code changes right away (the bot's own data commits don't trigger this)
     branches: [main]
   workflow_dispatch:
@@ -27,14 +28,31 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
+      # Per-pixel values of past images, so rebuilds don't download everything again.
+      - uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: pixel-cache-${{ github.run_id }}
+          restore-keys: pixel-cache-
+
+      - name: Test
+        run: uv run pytest -q
+
+      - name: Rebuild river area (yearly, after the monsoon)
+        if: github.event.schedule == '0 2 15 10 *'
+        run: uv run python pipeline/build_river_mask.py
+
       - name: Run pipeline
         run: uv run python pipeline/run.py
+
+      - name: Check published data
+        run: uv run pytest -q -k published
 
       - name: Commit new data
         run: |
           git config user.name "river-watch-bot"
           git config user.email "river-watch-bot@users.noreply.github.com"
-          git add data/history web/data
+          git add data/history data/masks web/data
           git diff --cached --quiet || git commit -m "Data update $(date -u +%F)"
           git push
 

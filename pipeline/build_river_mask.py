@@ -25,7 +25,7 @@ Usage:
 
 import argparse
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import rasterio
@@ -56,7 +56,9 @@ def build(river, full_cfg):
     tf, w, h, mask = make_grid(corridor)
     hist = json.loads((ROOT / f"data/history/{river['id']}.json").read_text())
     rejected = reject_dates(hist, sorted(hist["dates"]), full_cfg["quality"])  # hazy or cloud-hit images
-    dates = [d for d in sorted(hist["dates"]) if d not in rejected]
+    # Only recent years: the channel shifts (floods, riverfront works), and CI has to download them.
+    since = (date.fromisoformat(max(hist["dates"])) - timedelta(days=365 * cfg["mask_years"])).isoformat()
+    dates = [d for d in sorted(hist["dates"]) if d not in rejected and d > since]
     days = search(river, date.fromisoformat(dates[0]), date.fromisoformat(dates[-1]), det)
 
     n = int(mask.sum())

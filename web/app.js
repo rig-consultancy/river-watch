@@ -76,9 +76,9 @@ function initMap() {
   map = L.map("map", { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
   baseLayers.map = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     { maxZoom: 19, className: "osm-tiles", attribution: "© OpenStreetMap contributors" });
-  baseLayers.sat = L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
+  // Satellite: the Sentinel-2 image of the date on the slider (Copernicus data, free for any use),
+  // so the map shows exactly the picture the numbers came from. Its URL follows the slider.
+  baseLayers.sat = L.tileLayer("", { maxZoom: 19, maxNativeZoom: 15, attribution: "" });
   baseLayers.map.addTo(map);
 
   document.querySelectorAll("[data-base]").forEach((b) => b.addEventListener("click", () => {
@@ -195,6 +195,18 @@ function setIdx(i) {
   $("slider").value = i;
   $("slider-date").textContent = t("slider_label", { date: fmtDate(current.segment_history.dates[i]) });
   segLayer.setStyle(segStyle);
+  syncSatellite();
+}
+
+function syncSatellite() {
+  const d = current.segment_history.dates[idx], scene = sceneOn(d), sat = baseLayers.sat;
+  if (!scene) return;
+  sat.setUrl(`https://planetarycomputer.microsoft.com/api/data/v1/item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x` +
+    `?collection=sentinel-2-l2a&item=${scene}&assets=visual&asset_bidx=visual%7C1%2C2%2C3&nodata=0` +
+    `&color_formula=Gamma%20RGB%201.6%20Saturation%201.2`);
+  const attr = `Contains modified Copernicus Sentinel data (${d}), via Microsoft Planetary Computer`;
+  if (map.hasLayer(sat)) { map.attributionControl.removeAttribution(sat.options.attribution); map.attributionControl.addAttribution(attr); }
+  sat.options.attribution = attr;
 }
 function startPlay() {
   const n = current.segment_history.dates.length;

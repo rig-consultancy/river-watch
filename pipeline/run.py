@@ -757,6 +757,7 @@ def write_web(river, cfg, segments, history, area):
                        "green_channel_km2": round(float(area["green_px"].sum()) * RES * RES / 1e6, 2)},
         "segments": {"type": "FeatureCollection", "features": features},
         "series": series,
+        "regions": region_out,
         # Images left out of every figure, and why (shown in the data table).
         "rejected_dates": [{"date": d, "reason": rejected[d], "aot": history["dates"][d].get("aot"),
                             "cloud_share": history["dates"][d].get("cloud_share"),

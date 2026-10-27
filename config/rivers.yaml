@@ -29,6 +29,7 @@ detection:
 river_mask:
   min_water_share: 0.15      # open water on at least this share of clear dates
   min_clear_dates: 20        # need this many clear looks at a pixel to decide
+  mask_years: 2              # decide from the last 2 years of images
   channel_m: 50              # keep only water areas within this distance of the centreline
   fill_holes_m2: 2000        # count gaps smaller than this inside the channel as river
   min_green_share: 0.6       # inside the OSM outline, never water but green this often: "green channel"

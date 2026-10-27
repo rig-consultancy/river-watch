@@ -1,0 +1,12 @@
+Copyright (c) 2025-2026 RIG Consultancy. All rights reserved.
+
+This repository is published for transparency so that anyone can see how the River Watch figures
+are produced. No licence is granted to copy, modify, distribute or use this code, in whole or in
+part, without prior written permission. For licensing or services, contact info.rigconsultancy@gmail.com.
+
+Data used and produced here carry their own terms:
+- Sentinel-1 and Sentinel-2 data: Copernicus, free for any use with attribution
+  ("Contains modified Copernicus Sentinel data").
+- River outlines and place names: © OpenStreetMap contributors, ODbL.
+- PMC 2022 ward boundaries: SeerMaps for Nikhil VJ via DataMeet, MIT.
+- PCMC ward boundaries: DataMeet, CC BY-SA 2.5 India.
