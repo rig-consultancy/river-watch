@@ -4,6 +4,7 @@ known answers. The detectors themselves aren't loaded here (they're scored separ
 Run with: uv run pytest
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -86,7 +87,7 @@ def test_summarise_open_dumps_and_long_parked():
     assert s["garbage"]["days_to_clear_median"] == 8.0   # A: at least 2026-10-01 to 2026-10-09
     assert [c["min_days"] for c in s["vehicles"]["long_parked"]] == [12]
     assert s["vehicles"]["long_parked_now"] == 0  # gone on the latest image
-    assert s["vehicles"]["per_date"][1] == {"date": "2026-10-05", "vehicles": 2, "kerb_used_pct": 0.9}
+    assert s["vehicles"]["per_date"][1] == {"date": "2026-10-05", "vehicles": 2, "dumps": 1, "kerb_used_pct": 0.9}
 
 
 def test_detect_image_maps_pixels_and_keeps_only_the_strip(tmp_path):
@@ -132,3 +133,17 @@ def test_detect_image_maps_pixels_and_keeps_only_the_strip(tmp_path):
     v = out["vehicle"][0]
     assert (v["x"], v["y"], v["length"]) == (x0 + 500, y0 - 150, 4.5)
     assert out["garbage"] == []
+
+
+def test_published_roadside_data_has_what_the_page_reads():
+    index = json.loads((ROOT / "web/data/roadside-index.json").read_text())
+    assert index and all({"id", "name", "name_mr"} <= set(s) for s in index)
+    for site in index:
+        d = json.loads((ROOT / f"web/data/roadside-{site['id']}.json").read_text())
+        assert {"latest", "images", "road_m", "roads", "example", "long_parked_days", "garbage", "vehicles"} <= set(d)
+        for s in d["garbage"]["spots"]:
+            assert {"lat", "lon", "ward", "open", "area_m2"} <= set(s) and s["episodes"]
+            assert 18.4 < s["lat"] < 18.8 and 73.6 < s["lon"] < 74.0
+        for p in d["vehicles"]["long_parked"]:
+            assert {"lat", "lon", "ward", "open", "first", "last", "min_days"} <= set(p)
+        assert all({"date", "vehicles", "dumps", "kerb_used_pct"} <= set(r) for r in d["vehicles"]["per_date"])

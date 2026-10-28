@@ -6,6 +6,8 @@ road strip built by fetch_roads.py, follows each one from date to date, and publ
 it stayed: data/roadside/<site>/ (detections per date) and web/data/roadside-<site>.json.
 
 Run with: uv run --group detect python pipeline/roadside.py [site-id ...]
+Until real images exist, `--example` publishes clearly marked made-up data (the page shows a banner)
+so the dashboard can be seen working; it goes through the same tracking and analytics code.
 """
 
 import json
@@ -212,7 +214,7 @@ def summarise(dates, garbage, vehicles, road_m, trk):
     for i, d in enumerate(dates):
         here = [v for v in vehicles if i in v["seen"]]
         # Parked end to end, how much of the road's kerb length they take up (both sides count).
-        per_date.append({"date": d, "vehicles": len(here),
+        per_date.append({"date": d, "vehicles": len(here), "dumps": sum(i in p["seen"] for p in garbage),
                          "kerb_used_pct": round(100 * sum(v["last"].get("length", 4.5) for v in here)
                                                 / (2 * road_m), 1) if road_m else None})
     return {
@@ -239,7 +241,6 @@ def run_site(site, cfg, detectors):
     geo = json.loads((ROOT / f"data/roadside/{site['id']}.geojson").read_text())
     kinds = {f["properties"]["kind"]: f for f in geo["features"]}
     strip_m = transform(to_m, shape(kinds["strip"]["geometry"]))
-    road_m = kinds["roads"]["properties"]["length_m"]
 
     out = ROOT / "data/roadside" / site["id"]
     out.mkdir(parents=True, exist_ok=True)
@@ -255,7 +256,13 @@ def run_site(site, cfg, detectors):
     if not found:
         print(f"{site['id']}: no images yet in {cfg['images_dir']}/{site['id']}/")
         return detectors
+    publish(site, trk, geo, found)
+    return detectors
 
+
+def publish(site, trk, geo, found, example=False):
+    kinds = {f["properties"]["kind"]: f for f in geo["features"]}
+    road_m = kinds["roads"]["properties"]["length_m"]
     dates = list(found)
     from shapely import wkt
     feet = [prep(wkt.loads(found[d]["footprint"])) for d in dates]
@@ -272,21 +279,74 @@ def run_site(site, cfg, detectors):
         lon, lat = to_ll(s["x"], s["y"])
         s |= {"lon": round(lon, 6), "lat": round(lat, 6),
               "ward": next((n for n, w in wards if w.contains(Point(lon, lat))), None)}
-    summary |= {"site": site["id"], "name": site["name"], "name_mr": site["name_mr"], "road_m": road_m}
+    roads = kinds["roads"]["geometry"]
+    lines = roads["coordinates"] if roads["type"] == "MultiLineString" else [roads["coordinates"]]
+    summary |= {"site": site["id"], "name": site["name"], "name_mr": site["name_mr"], "road_m": road_m,
+                "example": example, "long_parked_days": trk["long_parked_days"], "roads": [[[round(x, 6), round(y, 6)] for x, y in ln] for ln in lines]}
     (ROOT / f"web/data/roadside-{site['id']}.json").write_text(json.dumps(summary))
     g = summary["garbage"]
-    print(f"{site['id']}: {len(dates)} images, {g['open_now']} dumps open now "
+    print(f"{site['id']}: {len(dates)} images{' (EXAMPLE DATA)' if example else ''}, {g['open_now']} dumps open now "
           f"(median {g['days_uncleared_median']} days), {summary['vehicles']['long_parked_now']} long-parked vehicles")
-    return detectors
+
+
+def example_found(geo, seed=7):
+    """Made-up detections on the real road, for showing the dashboard before real images exist.
+
+    Ten images about a week apart. Dumps with known stories (left for weeks, cleared, coming back)
+    and vehicles that come and go, a few parked for days.
+    """
+    rng = np.random.default_rng(seed)
+    kinds = {f["properties"]["kind"]: f for f in geo["features"]}
+    road = transform(to_m, shape(kinds["roads"]["geometry"]))
+    foot = transform(to_m, shape(kinds["strip"]["geometry"])).envelope.buffer(50).wkt
+    dates = [str(date.fromordinal(date(2026, 8, 20).toordinal() + 7 * i)) for i in range(10)]
+
+    def along(f, side):
+        """A point at fraction f along the road, side * metres to its left or right."""
+        a = road.interpolate(f, normalized=True)
+        b = road.interpolate(min(f + 0.002, 1), normalized=True)
+        dx, dy = b.x - a.x, b.y - a.y
+        n = np.hypot(dx, dy) or 1
+        return a.x - dy / n * side, a.y + dx / n * side
+
+    dumps = [(0.08, [range(0, 10)]), (0.21, [range(2, 5), range(7, 10)]), (0.35, [range(1, 3)]),
+             (0.47, [range(5, 10)]), (0.62, [range(8, 10)]), (0.74, [range(0, 4)]), (0.9, [range(6, 7)])]
+    parked = [(0.15, range(0, 6)), (0.4, range(3, 10)), (0.55, range(6, 10)), (0.81, range(1, 3))]
+    found = {d: {"pixel_m": 0.3, "footprint": foot, "vehicle": [], "garbage": []} for d in dates}
+    for k, (f, runs) in enumerate(dumps):
+        x, y = along(f, 9)
+        for run in runs:
+            for i in run:
+                found[dates[i]]["garbage"].append({"x": round(x + rng.normal(0, 1), 2), "y": round(y + rng.normal(0, 1), 2),
+                                                   "score": 0.15, "area_m2": round(4 + 3 * k + 2 * (i - run[0]), 1)})
+    for f, run in parked:
+        x, y = along(f, -6)
+        for i in run:
+            found[dates[i]]["vehicle"].append({"x": round(x, 2), "y": round(y, 2), "score": 0.8, "length": 4.6, "width": 1.9})
+    for d in dates:
+        for _ in range(rng.integers(18, 34)):
+            x, y = along(rng.uniform(0, 1), rng.choice([-6, 6]))
+            found[d]["vehicle"].append({"x": round(x, 2), "y": round(y, 2), "score": 0.7,
+                                        "length": round(rng.uniform(3.8, 7), 1), "width": 1.8})
+    return found
 
 
 def main():
     cfg = yaml.safe_load((ROOT / "config/roadside.yaml").read_text())
-    only = sys.argv[1:]
+    args = sys.argv[1:]
+    example = "--example" in args
+    only = [a for a in args if not a.startswith("--")]
     detectors = None
     for site in cfg["sites"]:
-        if not only or site["id"] in only:
+        if only and site["id"] not in only:
+            continue
+        if example:
+            geo = json.loads((ROOT / f"data/roadside/{site['id']}.geojson").read_text())
+            publish(site, cfg["tracking"], geo, example_found(geo), example=True)
+        else:
             detectors = run_site(site, cfg, detectors)
+    (ROOT / "web/data/roadside-index.json").write_text(json.dumps(
+        [{"id": s["id"], "name": s["name"], "name_mr": s["name_mr"]} for s in cfg["sites"]]))
 
 
 if __name__ == "__main__":

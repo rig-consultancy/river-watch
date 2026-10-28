@@ -112,7 +112,8 @@ def test_outlook_gives_no_number_when_monsoon_is_due():
     assert segs == [None, None]
 
 
-@pytest.mark.parametrize("path", sorted((ROOT / "web/data").glob("*.json")), ids=lambda p: p.name)
+@pytest.mark.parametrize("path", sorted(p for p in (ROOT / "web/data").glob("*.json") if not p.name.startswith("roadside")),
+                         ids=lambda p: p.name)
 def test_published_dashboard_data_is_complete(path):
     """The files the dashboard reads have the fields it relies on."""
     data = json.loads(path.read_text())

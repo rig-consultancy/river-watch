@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadside Watch</title>
+<meta name="description" content="Garbage dumps and long-parked vehicles along the roads outside a housing society, from very high resolution satellite images.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="roadside.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1 data-i18n="rs_title">Roadside Watch</h1>
+    <p class="sub" data-i18n="rs_sub">Garbage dumps and long-parked vehicles along the roads outside a housing society</p>
+  </div>
+  <div class="controls">
+    <label><span data-i18n="rs_site">Society</span> <select id="site"></select></label>
+    <div class="seg" role="group" aria-label="Language">
+      <button type="button" data-lang="en" lang="en">English</button>
+      <button type="button" data-lang="mr" lang="mr">मराठी</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="example-banner" id="example" role="note" hidden>
+    <strong data-i18n="rs_ex_title">Example data</strong>
+    <span data-i18n="rs_ex_text">No satellite images of this road have been analysed yet. Everything below is made up, placed on the real roads, to show how the page will work.</span>
+  </div>
+  <p class="meta"><span id="meta">Loading…</span> · <a href="./" data-i18n="rs_back">River Watch</a></p>
+
+  <section class="tiles" aria-label="Latest figures">
+    <div class="tile"><div class="tile-label" data-i18n="rs_t_open">Garbage dumps now</div><div class="tile-value" id="t-open">–</div><div class="tile-note" id="t-open-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="rs_t_days">Left uncleared</div><div class="tile-value" id="t-days">–</div><div class="tile-note" id="t-days-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="rs_t_cleared">Cleared</div><div class="tile-value" id="t-cleared">–</div><div class="tile-note" id="t-cleared-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="rs_t_back">Dumped again after cleaning</div><div class="tile-value" id="t-back">–</div><div class="tile-note" id="t-back-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="rs_t_parked">Long-parked vehicles</div><div class="tile-value" id="t-parked">–</div><div class="tile-note" id="t-parked-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="rs_t_kerb">Kerb taken by parking</div><div class="tile-value" id="t-kerb">–</div><div class="tile-note" id="t-kerb-note"></div></div>
+  </section>
+
+  <section class="mapwrap">
+    <div class="panel map-panel">
+      <div class="panel-head">
+        <h2 data-i18n="rs_map_title">Dumps and parked vehicles</h2>
+        <div class="seg" role="group" aria-label="Show on map">
+          <button type="button" data-show="all" class="on" data-i18n="rs_show_all">All</button>
+          <button type="button" data-show="garbage" data-i18n="rs_show_garbage">Garbage</button>
+          <button type="button" data-show="vehicles" data-i18n="rs_show_vehicles">Vehicles</button>
+        </div>
+      </div>
+      <div id="map" role="region" aria-label="Map of the watched roads"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="panel hot-panel">
+      <div class="panel-head">
+        <div class="seg" role="tablist" aria-label="List">
+          <button type="button" data-list="open" class="on" data-i18n="rs_tab_open">Open dumps</button>
+          <button type="button" data-list="cleared" data-i18n="rs_tab_cleared">Cleared</button>
+          <button type="button" data-list="parked" data-i18n="rs_tab_parked">Parked</button>
+        </div>
+      </div>
+      <p class="hint" id="list-hint"></p>
+      <ol id="spots" class="spots"></ol>
+    </div>
+  </section>
+
+  <section class="panel wards-panel">
+    <div class="panel-head"><h2 data-i18n="rs_wards_title">By PCMC ward</h2></div>
+    <div class="table-scroll"><table id="wards"><thead><tr>
+      <th data-i18n="rs_w_ward">Ward</th><th data-i18n="rs_w_open">Dumps now</th><th data-i18n="rs_w_median">Typical days uncleared</th>
+      <th data-i18n="rs_w_max">Longest</th><th data-i18n="rs_w_cleared">Cleared</th><th data-i18n="rs_w_back">Dumped again</th>
+      <th data-i18n="rs_w_parked">Long-parked now</th>
+    </tr></thead><tbody></tbody></table></div>
+    <p class="hint" data-i18n="rs_wards_note">Complaints go to the ward office: through PCMC Sarathi or the Swachhata app, with the spot's map link.</p>
+  </section>
+
+  <section class="charts">
+    <div class="panel">
+      <div class="panel-head"><h2 data-i18n="rs_c_dumps">Dumps seen on each image</h2><span class="unit" data-i18n="rs_u_count">count</span></div>
+      <div class="chart" id="c-dumps"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2 data-i18n="rs_c_vehicles">Vehicles along the road</h2><span class="unit" data-i18n="rs_u_vehicles">count · % of kerb taken</span></div>
+      <div class="chart" id="c-vehicles"></div>
+    </div>
+  </section>
+
+  <section class="panel about">
+    <h2 data-i18n="about_title">How this works</h2>
+    <ul>
+      <li data-i18n-html="rs_about_images"></li>
+      <li data-i18n-html="rs_about_detect"></li>
+      <li data-i18n-html="rs_about_days"></li>
+      <li data-i18n-html="rs_about_parked"></li>
+      <li data-i18n-html="rs_about_ward"></li>
+    </ul>
+    <p data-i18n-html="rs_about_limits"></p>
+    <p class="credits" data-i18n="rs_credits">Roads and society boundary © OpenStreetMap contributors. PCMC ward boundaries: DataMeet (CC BY-SA 2.5 India).</p>
+  </section>
+</main>
+
+<div class="tooltip" id="tip" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="i18n.js"></script>
+<script src="roadside.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+/* Roadside Watch: only what the river dashboard's style.css doesn't already have. */
+.example-banner {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+  border: 1px dashed var(--ramp-2); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;
+  color: var(--text-secondary); font-size: 13px;
+}
+.example-banner strong { color: var(--ramp-3); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; }
+
+.spots { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 520px; }
+.spots li {
+  display: grid; grid-template-columns: 12px 1fr auto; gap: 2px 10px; align-items: start;
+  padding: 8px 0; border-top: 1px solid var(--grid);
+}
+.spots li.empty { display: block; color: var(--text-muted); font-size: 13px; }
+.sp-dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; }
+.sp-main { display: flex; flex-direction: column; min-width: 0; }
+.sp-ward { font-size: 13px; font-weight: 600; }
+.sp-line { font-size: 12px; color: var(--text-secondary); }
+.sp-links { font-size: 12px; color: var(--text-muted); }
+.sp-links a { color: var(--accent); }
+.sp-val { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.legend .dot-sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.legend .dot-sw.hollow { border: 2px dashed var(--clear); }
+.legend .car-sw, .car-pin { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--series-3); border: 2px solid var(--surface-1); vertical-align: middle; margin-right: 6px; }
+.car-pin { opacity: 0.45; margin: 0; }
+.car-pin.now { opacity: 1; }
+
+.wards-panel { margin-bottom: 16px; }
+.wards-panel td.num, .wards-panel th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.chart svg .bar { stroke: none; }
+.chart svg .grid { stroke: var(--grid); }
+.chart svg .tick { fill: var(--text-muted); font-size: 11px; }

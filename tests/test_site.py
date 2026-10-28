@@ -45,7 +45,7 @@ def strings():
 
 def used_keys():
     keys = set()
-    for js in ("app.js", "report.js"):
+    for js in ("app.js", "report.js", "roadside.js"):
         keys |= set(re.findall(r'\bt\("(\w+)"', (WEB / js).read_text()))
     for html in WEB.glob("*.html"):
         keys |= set(re.findall(r'data-i18n(?:-html)?="(\w+)"', html.read_text()))
@@ -187,7 +187,7 @@ def test_live_site_serves_this_commit():
     """After a deploy: every page, script and data file is served, and the data is this commit's."""
     import requests
     base = os.environ["SITE_URL"].rstrip("/") + "/"
-    for page in ("", "report.html", "app.js", "report.js", "i18n.js", "style.css", "report.css"):
+    for page in ("", "report.html", "roadside.html", "app.js", "report.js", "roadside.js", "i18n.js", "style.css", "report.css", "roadside.css"):
         r = requests.get(base + page, timeout=30)
         assert r.status_code == 200, (page, r.status_code)
         if page.endswith(".js"):
