@@ -1,5 +1,8 @@
 """Fetch the roads to watch around each roadside site from OpenStreetMap and save them as GeoJSON.
 
+Also saves the building outlines around the roads (data/roadside/<site>-buildings.geojson), which
+roadside_land.py uses to tell built-up pixels from open land. `--buildings` refreshes only those.
+
 Runs once per site (or on demand); the result is committed to data/roadside/ so the scheduled
 run never calls Overpass. Saves the society boundary, the road centrelines outside it, and the
 strip either side of them where dumps and parked vehicles are looked for (all in WGS84).
@@ -57,6 +60,18 @@ def strip(boundary, roads, site: dict) -> dict:
     }
 
 
+def buildings(geo: dict, within_m: float) -> dict:
+    roads = shape(next(f for f in geo["features"] if f["properties"]["kind"] == "roads")["geometry"])
+    w, s, e, n = transform(to_ll, transform(to_m, roads).buffer(within_m + 20).envelope).bounds
+    data = overpass(f'[out:json][timeout:90];way["building"]({s},{w},{n},{e});out geom;')
+    feats = []
+    for el in data["elements"]:
+        c = [(round(p["lon"], 6), round(p["lat"], 6)) for p in el.get("geometry", [])]
+        if len(c) >= 4 and c[0] == c[-1]:
+            feats.append({"type": "Feature", "properties": {}, "geometry": mapping(Polygon(c))})
+    return {"type": "FeatureCollection", "features": feats}
+
+
 def ward(geo: dict) -> str | None:
     """PCMC ward the watched roads mostly fall in (complaints go to that ward office)."""
     roads = shape(next(f for f in geo["features"] if f["properties"]["kind"] == "roads")["geometry"])
@@ -67,15 +82,24 @@ def ward(geo: dict) -> str | None:
 
 def main():
     cfg = yaml.safe_load((ROOT / "config/roadside.yaml").read_text())
-    only = sys.argv[1:]
+    only = [a for a in sys.argv[1:] if not a.startswith("--")]
+    only_buildings = "--buildings" in sys.argv
     out = ROOT / "data/roadside"
     out.mkdir(parents=True, exist_ok=True)
     for site in cfg["sites"]:
         if only and site["id"] not in only:
             continue
-        geo = fetch(site)
-        geo["ward"] = ward(geo)
-        (out / f"{site['id']}.geojson").write_text(json.dumps(geo))
+        if only_buildings:
+            geo = json.loads((out / f"{site['id']}.geojson").read_text())
+        else:
+            geo = fetch(site)
+            geo["ward"] = ward(geo)
+            (out / f"{site['id']}.geojson").write_text(json.dumps(geo))
+        b = buildings(geo, cfg["land"]["corridor_m"])
+        (out / f"{site['id']}-buildings.geojson").write_text(json.dumps(b))
+        print(f"{site['id']}: {len(b['features'])} buildings")
+        if only_buildings:
+            continue
         p = {f["properties"]["kind"]: f["properties"] for f in geo["features"]}
         print(f"{site['id']}: {p['roads']['length_m']} m of road, strip {p['strip']['area_m2']} m², "
               f"ward {geo['ward']}")

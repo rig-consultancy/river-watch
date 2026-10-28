@@ -27,7 +27,7 @@
 <main>
   <div class="example-banner" id="example" role="note" hidden>
     <strong data-i18n="rs_ex_title">Example data</strong>
-    <span data-i18n="rs_ex_text">No satellite images of this road have been analysed yet. Everything below is made up, placed on the real roads, to show how the page will work.</span>
+    <span data-i18n="rs_ex_text">No sharp satellite images of this road have been analysed yet. The garbage and vehicle figures are made up, placed on the real roads, to show how the page will work. The land-change section uses real images.</span>
   </div>
   <p class="meta"><span id="meta">Loading…</span> · <a href="./" data-i18n="rs_back">River Watch</a></p>
 
@@ -48,6 +48,7 @@
           <button type="button" data-show="all" class="on" data-i18n="rs_show_all">All</button>
           <button type="button" data-show="garbage" data-i18n="rs_show_garbage">Garbage</button>
           <button type="button" data-show="vehicles" data-i18n="rs_show_vehicles">Vehicles</button>
+          <button type="button" data-show="land" data-i18n="rs_show_land">Land change</button>
         </div>
       </div>
       <div id="map" role="region" aria-label="Map of the watched roads"></div>
@@ -63,6 +64,26 @@
       </div>
       <p class="hint" id="list-hint"></p>
       <ol id="spots" class="spots"></ol>
+    </div>
+  </section>
+
+  <section class="panel land-panel" id="land" hidden>
+    <div class="panel-head">
+      <h2 data-i18n="rs_land_title">Land change near the roads</h2>
+      <span class="real-badge" data-i18n="rs_land_badge">Real satellite data</span>
+    </div>
+    <p class="muted" id="land-intro"></p>
+    <div class="land-facts">
+      <div><div class="tile-label" data-i18n="rs_lf_patches">Green land turned bare</div><div class="lf-value" id="lf-patches">–</div><div class="tile-note" id="lf-patches-note"></div></div>
+      <div><div class="tile-label" data-i18n="rs_lf_green">Open land green after the monsoon</div><div class="lf-value" id="lf-green">–</div><div class="tile-note" id="lf-green-note"></div></div>
+      <div><div class="tile-label" data-i18n="rs_lf_bare">Bare open land in the dry season</div><div class="lf-value" id="lf-bare">–</div><div class="tile-note" id="lf-bare-note"></div></div>
+    </div>
+    <div class="land-grid">
+      <ol class="patches" id="patches"></ol>
+      <div>
+        <div class="unit" id="lf-trend-label"></div>
+        <div class="chart small" id="c-green"></div>
+      </div>
     </div>
   </section>
 
@@ -95,6 +116,7 @@
       <li data-i18n-html="rs_about_days"></li>
       <li data-i18n-html="rs_about_parked"></li>
       <li data-i18n-html="rs_about_ward"></li>
+      <li data-i18n-html="rs_about_land"></li>
     </ul>
     <p data-i18n-html="rs_about_limits"></p>
     <p class="credits" data-i18n="rs_credits">Roads and society boundary © OpenStreetMap contributors. PCMC ward boundaries: DataMeet (CC BY-SA 2.5 India).</p>

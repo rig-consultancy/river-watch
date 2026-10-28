@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_roads  # noqa: E402
 import roadside  # noqa: E402
+import roadside_land  # noqa: E402
 
 TRK = {"garbage_match_m": 6, "vehicle_match_m": 2.5, "vehicle_max_size_change": 0.3, "long_parked_days": 3}
 DATES = ["2026-10-01", "2026-10-05", "2026-10-09", "2026-10-13", "2026-10-17"]
@@ -147,3 +148,44 @@ def test_published_roadside_data_has_what_the_page_reads():
         for p in d["vehicles"]["long_parked"]:
             assert {"lat", "lon", "ward", "open", "first", "last", "min_days"} <= set(p)
         assert all({"date", "vehicles", "dumps", "kerb_used_pct"} <= set(r) for r in d["vehicles"]["per_date"])
+
+
+LAND = {"green_ndvi": 0.35, "drop_ndvi": 0.15, "bare_ndvi": 0.3}
+
+
+def test_seasonal_takes_each_years_median_of_the_chosen_months():
+    dates = ["2024-10-05", "2024-11-09", "2024-12-14", "2025-03-01", "2025-10-20"]
+    v = np.array([[[0.6]], [[0.2]], [[0.5]], [[0.1]], [[0.4]]], "float32")
+    post = roadside_land.seasonal(dates, v, roadside_land.POST)
+    assert sorted(post) == [2024, 2025] and post[2024][0, 0] == np.float32(0.5) and post[2025][0, 0] == np.float32(0.4)
+
+
+def test_turned_bare_needs_green_before_and_bare_in_the_last_two_seasons():
+    # Pixels: 0 green then bare (changed), 1 always green, 2 always bare, 3 bare only last season
+    # (one season isn't enough), 4 green then bare but outside the candidate area (e.g. a building).
+    years = range(2019, 2027)
+    def season(y):
+        late = y >= 2025
+        return np.array([[0.1 if late else 0.6, 0.6, 0.1, 0.1 if y == 2026 else 0.6, 0.1 if late else 0.6]], "float32")
+    post = {y: season(y) for y in years}
+    bsi = {y: np.full((1, 5), 0.1, "float32") for y in years}
+    cand = np.array([[True, True, True, True, False]])
+    lost, before = roadside_land.turned_bare(post, bsi, cand, LAND)
+    assert lost.tolist() == [[True, False, False, False, False]]
+    assert before == list(range(2019, 2025))
+    # Too short a record to compare: nothing flagged.
+    short, _ = roadside_land.turned_bare({2025: season(2025), 2026: season(2026)}, bsi, cand, LAND)
+    assert not short.any()
+
+
+def test_published_land_change_has_what_the_page_reads():
+    for site in json.loads((ROOT / "web/data/roadside-index.json").read_text()):
+        path = ROOT / f"web/data/roadside-{site['id']}-land.json"
+        if not path.exists():
+            continue
+        d = json.loads(path.read_text())
+        assert d["images"] == len(d["dates"]) and d["dates"] == sorted(d["dates"])
+        assert all(0 <= r["green_pct"] <= 100 for r in d["trend"])
+        for p in d["patches"]:
+            assert len(p["series"]) == len(d["dates"]) and p["area_m2"] >= 300
+            assert 18.4 < p["lat"] < 18.8 and 73.6 < p["lon"] < 74.0 and p["geometry"]["type"] in ("Polygon", "MultiPolygon")

@@ -57,6 +57,8 @@ jobs:
       # With no detections yet, the page keeps its example data.
       - name: Roadside watch
         run: |
+          # Land change from free Sentinel-2 images: adds any new month (cached in data/cache/).
+          uv run python pipeline/roadside_land.py
           if compgen -G "data/roadside/images/*/*.tif" > /dev/null; then
             uv run --group detect python pipeline/roadside.py
           else

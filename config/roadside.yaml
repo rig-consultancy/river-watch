@@ -38,3 +38,19 @@ tracking:
   vehicle_match_m: 2.5
   vehicle_max_size_change: 0.3   # and a vehicle's box length differs by at most 30%
   long_parked_days: 3            # seen in the same place on images at least this many days apart
+
+# Land change from free Sentinel-2 images (10 m, roadside_land.py). Too coarse for piles or cars, but
+# it shows open land near the roads that was green after the monsoon and has turned bare: dumping,
+# debris or construction, to be checked on the ground.
+land:
+  start: "2017-01-01"
+  corridor_m: 300          # analyse open land within this distance of the watched roads
+  near_road_m: 60          # the "near the roads" trend
+  patch_road_m: 100        # changed patches must be within this distance of a road
+  max_scene_cloud: 30
+  min_clear: 0.9           # a month's image is used if at least 90% of the area is cloud-free
+  max_built_share: 0.15    # pixels with more mapped building than this are built-up, not open land
+  green_ndvi: 0.35         # after the monsoon (Oct-Dec), open land above this is green
+  drop_ndvi: 0.15          # changed: post-monsoon greenness fell by at least this...
+  bare_ndvi: 0.3           # ...to below this, in the last two post-monsoon seasons
+  min_pixels: 3            # ignore patches under 300 m²

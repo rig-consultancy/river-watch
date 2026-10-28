@@ -161,6 +161,14 @@ in the same folder and the detectors are installed for that run. Until a site ha
   length). Between images we can't know, so each stay has a minimum (first to last sighting) and a
   maximum (last image without it before, to the first without it after). An image that didn't cover
   a spot doesn't count as it being gone. A dump place that is cleared and refilled counts as coming back.
+- **Land change (free, real data now):** `pipeline/roadside_land.py` takes the clearest Sentinel-2
+  image of every month since 2017 within 300 m of the roads (10 m: too coarse for piles or cars).
+  Leaving out buildings mapped in OSM (`data/roadside/<site>-buildings.geojson`, from
+  `fetch_roads.py --buildings`), the roads and the society, it flags open land within 100 m of a road
+  that was green after earlier monsoons (Oct-Dec) and is bare after the last two: dumping, debris or
+  construction, to check on the ground. Around Antheia (82 images): a 5,600 m² patch 25 m from the
+  road that stayed bare through the 2026 monsoon (covered ground), and a 2,700 m² cleared plot.
+  Runs daily with the rest; only new months are downloaded.
 - **Analytics:** dumps open now, days uncleared, cleared and how fast, places that come back,
   vehicles per image, share of kerb length taken by parking, vehicles seen in one place on images
   `long_parked_days` or more apart. Each spot gets its PCMC ward (the Antheia roads cross wards 27,

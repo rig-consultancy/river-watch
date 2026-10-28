@@ -31,3 +31,23 @@
 .chart svg .bar { stroke: none; }
 .chart svg .grid { stroke: var(--grid); }
 .chart svg .tick { fill: var(--text-muted); font-size: 11px; }
+
+/* Land change (real Sentinel-2 data) */
+.land-panel { margin-bottom: 16px; }
+.real-badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--good); color: var(--good); white-space: nowrap; }
+.land-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 12px 0 16px; }
+.land-facts > div { min-width: 0; }
+.lf-value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.land-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.patches { list-style: none; margin: 0; padding: 0; }
+.patches li { padding: 10px 0; border-top: 1px solid var(--grid); display: flex; flex-direction: column; gap: 2px; }
+.patches li.empty { color: var(--text-muted); font-size: 13px; }
+.p-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; justify-content: space-between; font-size: 14px; }
+.p-verdict { font-size: 12px; color: var(--text-secondary); }
+.p-verdict.covered { color: var(--critical); }
+.spark { width: 100%; max-width: 360px; height: 44px; display: block; margin: 4px 0; }
+.spark-line { fill: none; stroke: var(--good); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spark-green { stroke: var(--text-muted); stroke-dasharray: 3 3; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.spark-monsoon { fill: var(--series-1); opacity: 0.12; }
+.legend .land-sw { display: inline-block; width: 14px; height: 10px; border: 2px dashed var(--critical); margin-right: 6px; vertical-align: middle; }
+@media (max-width: 700px) { .land-facts, .land-grid { grid-template-columns: 1fr; } }
