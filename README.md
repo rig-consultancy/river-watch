@@ -119,6 +119,45 @@ uv run python pipeline/run.py --since 2025-10-01
 
 The dashboard's river selector picks it up automatically from `web/data/index.json`.
 
+## Roadside watch (pilot): garbage dumps and long-parked vehicles
+
+Along the roads outside a housing society (first: Mahindra Antheia, Pimpri), from very high
+resolution images (30-50 cm per pixel; Sentinel-2's 10 m pixels can't see either). No free source
+covers Pune at that resolution, so images come from a paid provider; the code is ready for them.
+
+```
+config/roadside.yaml        sites, detector settings, tracking distances
+pipeline/fetch_roads.py     one-off: society boundary + public roads outside it + 15 m strip -> data/roadside/<site>.geojson
+pipeline/roadside.py        scheduled: new GeoTIFFs in data/roadside/images/<site>/ (YYYY-MM-DD*.tif, not committed)
+                            -> detections per date in data/roadside/<site>/ -> web/data/roadside-<site>.json
+```
+
+```bash
+uv run --group detect python pipeline/roadside.py
+```
+
+- **Vehicles:** YOLO oriented boxes trained on DOTA aerial images. On 20 held-out DOTA images it found
+  88% of labelled vehicles (75% of its boxes matched a label; DOTA leaves some cars unlabelled, so
+  this is a floor). With pixels made 2x / 3x coarser, 78% / 66%: at 30-50 cm a car is only 9-15 px.
+- **Garbage:** an open-vocabulary detector (OWLv2) asked for piles of garbage, rubble and dumped waste,
+  no training needed. On 60 AerialWaste test images (dump sites in Italy, 30 with waste) it told dump
+  sites from clean ones with AUC 0.86 (score 0.10: 80% of dump sites caught, 73% of alerts right), but
+  its best box sat on the marked waste in only 11 of 30. Treat it as a starting point: once real images
+  of the site exist, confirm its finds and train a detector on them.
+- **How long:** each dump or vehicle is followed from image to image by position (vehicles also by
+  length). Between images we can't know, so each stay has a minimum (first to last sighting) and a
+  maximum (last image without it before, to the first without it after). An image that didn't cover
+  a spot doesn't count as it being gone. A dump place that is cleared and refilled counts as coming back.
+- **Analytics:** dumps open now, days uncleared, cleared and how fast, places that come back,
+  vehicles per image, share of kerb length taken by parking, vehicles seen in one place on images
+  `long_parked_days` or more apart. Each spot gets its PCMC ward (the Antheia roads cross wards 27,
+  28, 40 and 41), so a complaint can go to the right ward office.
+- **Limits:** trees over the road hide whatever is under them; a satellite passes at about the
+  same time each day, so a resident's car parked there every night looks the same as one never moved;
+  two similar cars in one spot can't be told apart. Licences: the vehicle model (Ultralytics) is
+  AGPL-3.0, which needs a commercial licence or a swap before this is offered as a closed service;
+  AerialWaste is CC BY-NC-ND and was used only to score the detector, not to train it.
+
 ## Deploy (fully automatic)
 
 1. Push this folder to a GitHub repository.

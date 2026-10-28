@@ -1,0 +1,40 @@
+# Roadside watch: garbage dumps and long-parked vehicles along roads outside a housing society.
+# Needs very high resolution images (30-50 cm per pixel); Sentinel-2's 10 m pixels can't see either.
+
+sites:
+  - id: antheia-pimpri
+    name: Mahindra Antheia (Pimpri)
+    name_mr: महिंद्रा अँथिया (पिंपरी)
+    # OpenStreetMap way of the society's boundary; the roads watched are the public roads
+    # within road_search_m of it, outside it.
+    osm_boundary_way: 1410826220
+    road_search_m: 40
+    road_types: [trunk, primary, secondary, tertiary, residential, unclassified]
+    # Dumps and parked vehicles sit on the carriageway edge, the footpath or the verge.
+    strip_half_width_m: 15
+
+# New images are picked up from here (GeoTIFFs with map position, one per date, file name
+# starting YYYY-MM-DD). A paid provider's downloader drops its orders into the same folder.
+images_dir: data/roadside/images
+
+detection:
+  tile_px: 1024              # images are cut into tiles of this size for the detectors
+  tile_overlap_px: 128
+  # Vehicles: YOLO oriented boxes trained on DOTA (aerial/satellite images).
+  vehicle_model: yolo11s-obb.pt
+  vehicle_classes: [small vehicle, large vehicle]
+  vehicle_min_score: 0.35
+  # Garbage: open-vocabulary detector asked for these, no training on our own images needed.
+  garbage_model: google/owlv2-base-patch16-ensemble
+  garbage_queries: [a pile of garbage, a heap of trash, dumped waste, a pile of rubble]
+  # On AerialWaste test images (dump sites in Italy) a top score of 0.10 caught 80% of dump sites
+  # with 73% of alerts right; 0.15 caught 40% with no false alerts. Retune on our own images.
+  garbage_min_score: 0.1
+  garbage_max_area_m2: 400   # bigger than this is a building, field or yard, not a roadside dump
+
+tracking:
+  # The same object on two dates if their centres are this close.
+  garbage_match_m: 6
+  vehicle_match_m: 2.5
+  vehicle_max_size_change: 0.3   # and a vehicle's box length differs by at most 30%
+  long_parked_days: 3            # seen in the same place on images at least this many days apart

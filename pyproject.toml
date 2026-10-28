@@ -21,6 +21,12 @@ dependencies = [
 package = false
 
 [dependency-groups]
+detect = [
+    "pillow>=13.0.0",
+    "torch>=2.14.1",
+    "transformers>=5.21.0",
+    "ultralytics>=8.4.191",
+]
 dev = [
     "pytest>=9.1.1",
 ]
