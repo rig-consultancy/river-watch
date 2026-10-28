@@ -130,6 +130,12 @@ def test_published_river_data_is_consistent(river):
         assert e["from"] < e["to"] and e["from"] in dates and e["to"] in dates and 0 <= e["segment"] < n
         assert e["after"] <= e["before"] / 2 + 0.05
 
+    lc = d["landsat_check"]
+    assert lc and lc["pairs"] == len(lc["series"]) and lc["checked"]
+    for x in (lc["direction"], d["radar"]["direction"]):
+        assert x is None or (0 <= x["share"] <= 1 and x["changes"] >= 5)
+    assert all(0 <= x["landsat_pct"] <= 100 and 0 <= x["sentinel2_pct"] <= 100 for x in lc["series"])
+
     u = d["uncertainty"]
     assert u["river_noise_pts"] > 0 and u["one_off_jumps"] < 0.05 * u["readings"]
     look = d["outlook"]
@@ -200,3 +206,5 @@ def test_live_site_serves_this_commit():
         assert live["latest_date"] == local["latest_date"] and live["series"] == local["series"], river
         days_old = (date.today() - date.fromisoformat(live["latest_date"])).days
         assert days_old <= 30 or date.today().month in (7, 8, 9), f"{river}: newest image is {days_old} days old"
+        checked = (date.today() - date.fromisoformat(live["landsat_check"]["checked"])).days
+        assert checked <= 40, f"{river}: Landsat cross-check last ran {checked} days ago (monthly run failing?)"

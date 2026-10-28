@@ -6,11 +6,13 @@ NDVI threshold. Landsat's pixels are 30 m against 10 m, so narrow stretches mix 
 agreement figures say how far the two independent sensors land apart. Writes
 data/validation/<river>-landsat.json (commit it); the dashboard shows the summary.
 
-Run after a backfill or once a year:
-  uv run python pipeline/crosscheck_landsat.py [river-id ...]
+Run after a backfill (all pairs again), and monthly by GitHub Actions with --new (only Landsat
+images since the last check; all pairs again if the river area changed):
+  uv run python pipeline/crosscheck_landsat.py [--new] [river-id ...]
 """
 
 import argparse
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
@@ -24,7 +26,7 @@ from rasterio.enums import Resampling
 from shapely import STRtree, points
 
 from run import (ROOT, STAC_URL, day_pixels, load_river, make_grid, make_segments, read_band,
-                 reject_dates, river_area)
+                 reject_dates, river_area, search)
 
 # QA_PIXEL bits: 1 dilated cloud, 2 cirrus, 3 cloud, 4 cloud shadow.
 QA_BAD = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
@@ -50,11 +52,16 @@ def landsat_ndvi(item, tf, w, h, mask):
     return ndvi
 
 
-def build(river, cfg, max_days=1):
+def build(river, cfg, new_only=False, max_days=1):
     det = cfg["detection"]
     line, aoi, corridor = load_river(river, det)
     tf, w, h, mask = make_grid(corridor)
     river_px, _, _ = river_area(river["id"], tf, w, h, mask, aoi)
+    area_id = hashlib.sha1(np.packbits(river_px).tobytes()).hexdigest()[:12]
+    out = ROOT / f"data/validation/{river['id']}-landsat.json"
+    old = json.loads(out.read_text()) if out.exists() else None
+    if not (new_only and old and old.get("river_area") == area_id):
+        old = None  # first check, or the river area changed: compare every pair again
     # Compare only pixels at least 20 m inside the river: there a whole 30 m Landsat pixel is
     # river, so the comparison isn't dominated by bank pixels that Landsat mixes in.
     inner = river_px.copy()
@@ -70,7 +77,11 @@ def build(river, cfg, max_days=1):
     hist = json.loads((ROOT / f"data/history/{river['id']}.json").read_text())
     rejected = reject_dates(hist, sorted(hist["dates"]), cfg["quality"])
     s2_dates = [d for d in sorted(hist["dates"]) if d not in rejected]
-    scenes = landsat_scenes(river, s2_dates[0], s2_dates[-1])
+    since = s2_dates[0]
+    if old and old["pairs"]:  # a few days of overlap: Landsat scenes appear in the catalogue late
+        since = (date.fromisoformat(old["pairs"][-1]["landsat_date"]) - timedelta(days=5)).isoformat()
+    known = {r["landsat_id"] for r in old["pairs"]} if old else set()
+    scenes = [it for it in landsat_scenes(river, since, s2_dates[-1]) if it.id not in known]
     pairs = []
     for it in scenes:
         ld = it.datetime.date()
@@ -84,14 +95,16 @@ def build(river, cfg, max_days=1):
 
     def compare(pair):
         d, it = pair
-        if not (ROOT / f"data/cache/{river['id']}/{d}.npz").exists():
-            return None  # Sentinel-2 pixels not downloaded yet (run run.py first)
         try:
             ls = landsat_ndvi(it, tf, w, h, mask)
+            # Sentinel-2 pixels from the cache, or downloaded again (GitHub's cache may not have them).
+            s2_items = [] if (ROOT / f"data/cache/{river['id']}/{d}.npz").exists() else [
+                s for s in search(river, date.fromisoformat(d), date.fromisoformat(d), det).get(d, [])
+                if s.id in hist["dates"][d]["scenes"]]
+            s2 = day_pixels(river["id"], d, s2_items, tf, w, h, mask)["ndvi"]
         except Exception as e:
             print(f"  {it.id}: failed ({type(e).__name__})")
             return None
-        s2 = day_pixels(river["id"], d, [], tf, w, h, mask)["ndvi"]
         both = keep & np.isfinite(ls) & np.isfinite(s2)
         if both.sum() < 0.5 * keep.sum():
             return None  # mostly cloudy in one of them
@@ -108,6 +121,10 @@ def build(river, cfg, max_days=1):
 
     with ThreadPoolExecutor(4) as pool:
         results = [r for r in pool.map(compare, pairs) if r]
+    print(f"  {len(results)} new usable pairs")
+    # Keep earlier pairs unless their Sentinel-2 image has since been rejected.
+    results += [r for r in (old["pairs"] if old else []) if r["date"] in s2_dates]
+    results = list({r["landsat_id"]: r for r in results}.values())
     results.sort(key=lambda r: r["date"])
     if not results:
         print("  no usable pairs")
@@ -124,22 +141,23 @@ def build(river, cfg, max_days=1):
         "stretch_mae_pts": round(float(np.mean(np.abs(st[:, 0] - st[:, 1]))), 1) if len(st) else None,
         "stretch_correlation": round(float(np.corrcoef(st[:, 0], st[:, 1])[0, 1]), 3) if len(st) > 2 else None,
     }
-    out = ROOT / f"data/validation/{river['id']}-landsat.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"summary": summary, "pairs": results}, separators=(",", ":")))
+    out.write_text(json.dumps({"summary": summary, "checked": date.today().isoformat(), "river_area": area_id,
+                               "pairs": results}, separators=(",", ":")))
     print(f"  {summary}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("rivers", nargs="*", help="river ids (default: all)")
+    ap.add_argument("--new", action="store_true", help="only Landsat images since the last check")
     args = ap.parse_args()
     cfg = yaml.safe_load((ROOT / "config/rivers.yaml").read_text())
     for river in cfg["rivers"]:
         if args.rivers and river["id"] not in args.rivers:
             continue
         print(river["name"])
-        build(river, cfg)
+        build(river, cfg, new_only=args.new)
 
 
 if __name__ == "__main__":

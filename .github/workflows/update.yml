@@ -7,6 +7,7 @@ on:
     - cron: "30 1 * * *"   # daily 07:00 IST; Sentinel-2 passes every few days, extra runs are cheap no-ops
     - cron: "30 13 * * *"  # and 19:00 IST, so a late or dropped scheduled run never leaves the site a day behind
     - cron: "0 2 15 10 *"  # 15 Oct: after the monsoon, rebuild the river area and flood test
+    - cron: "0 3 1 * *"    # 1st of each month: compare new Landsat 8/9 images with Sentinel-2
   push:                    # publish code changes right away (the bot's own data commits don't trigger this)
     branches: [main]
   workflow_dispatch:
@@ -43,6 +44,10 @@ jobs:
         if: github.event.schedule == '0 2 15 10 *'
         run: uv run python pipeline/build_river_mask.py
 
+      - name: Cross-check with Landsat (monthly)
+        if: github.event.schedule == '0 3 1 * *'
+        run: uv run python pipeline/crosscheck_landsat.py --new
+
       - name: Run pipeline
         run: uv run python pipeline/run.py
 
@@ -53,7 +58,7 @@ jobs:
         run: |
           git config user.name "river-watch-bot"
           git config user.email "river-watch-bot@users.noreply.github.com"
-          git add data/history data/masks web/data
+          git add data/history data/masks data/validation web/data
           git diff --cached --quiet || git commit -m "Data update $(date -u +%F)"
           git push
 

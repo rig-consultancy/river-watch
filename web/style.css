@@ -203,7 +203,18 @@ tr.rejected td:first-child { text-decoration: line-through; }
 .chart .empty { fill: var(--text-muted); font-size: 13px; }
 .chart .line.rad { stroke: var(--series-2); stroke-dasharray: 5 4; }
 .chart .dot.rad { fill: var(--surface-1); stroke: var(--series-2); stroke-width: 2; }
-.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; height: 24px; font-size: 12px; color: var(--text-secondary); }
+.chart .dot.ls { fill: var(--series-3); stroke: var(--surface-1); stroke-width: 1.5; opacity: 0.85; }
+.key.ls { border-top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--series-3); }
+.checks-panel { margin-bottom: 16px; }
+.checks-panel .hint { margin: 8px 0 0; }
+.check-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.check-card { border: 1px solid var(--grid); border-radius: 8px; padding: 10px 12px; }
+.check-card h3 { margin: 0 0 6px; font-size: 14px; }
+.check-card dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+.check-card dt { color: var(--text-muted); }
+.check-card dd { margin: 0; }
+.checks-panel .weak { color: var(--series-2); }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; min-height: 24px; font-size: 12px; color: var(--text-secondary); }
 .key { display: inline-block; width: 18px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 2px solid var(--series-1); }
 .key.rad { border-top: 2px dashed var(--series-2); }
 .chart .line.reg { stroke: var(--series-3); }

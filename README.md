@@ -13,7 +13,7 @@ config/rivers.yaml          which rivers to watch + detection thresholds
 pipeline/fetch_rivers.py    one-off: river outline + place names (English, Marathi) from OpenStreetMap -> data/rivers/
 pipeline/run.py             scheduled: Sentinel-2 -> per-500 m stats -> data/history/ + web/data/
 pipeline/build_river_mask.py after each monsoon (CI runs it on 15 Oct): river area + flood test -> data/masks/
-pipeline/crosscheck_landsat.py yearly: independent Landsat 8/9 check -> data/validation/
+pipeline/crosscheck_landsat.py monthly (CI, 1st of the month, --new): independent Landsat 8/9 check -> data/validation/
 data/regions/               PMC and PCMC ward boundaries (see its README for sources)
 web/                        dashboard and monthly report (report.html), English and Marathi (web/i18n.js)
 tests/                      uv run pytest: calculations and the published data
@@ -67,6 +67,11 @@ tests/                      uv run pytest: calculations and the published data
   from Landsat 8/9 within a day of a Sentinel-2 image. On the Mula-Mutha (82 pairs, 2017-2026)
   stretches move together (correlation 0.78) but Landsat reads about 7 points higher at every level:
   its 30 m pixels still catch bank plants on a 40-60 m river. It confirms direction, not level.
+  CI adds new Landsat images on the 1st of every month (`--new`; every pair again if the river
+  area changed). The dashboard's "Cross-checked by other satellites" panel shows, for Landsat and
+  for the Sentinel-1 radar, the days compared, how often they moved the same way as Sentinel-2
+  when it changed by 5 points or more, the typical difference, and when Landsat was last checked;
+  Landsat readings are also plotted on the hyacinth chart.
 - **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
   month's average and range, change, river map, worst stretches, drops and data quality.
 - **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).

@@ -159,3 +159,13 @@ def test_dashboard_scripts_parse(script):
         pytest.skip("node not installed")
     r = subprocess.run(["node", "--check", str(script)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_direction_agreement_counts_only_real_changes():
+    d = [f"2026-01-{i:02d}" for i in range(1, 30, 4)]  # 8 dates, 4 days apart
+    s2 = [10, 20, 10, 20, 21, 10, 20, 10]          # step 20 -> 21 is noise: not counted
+    other = [12, 25, 14, 22, 30, 15, 13, 11]       # wrong way only on the 10 -> 20 step before last
+    r = run.direction_agreement(list(zip(d, s2, other)))
+    assert r == {"share": round(5 / 6, 3), "changes": 6}
+    far = [("2026-01-01", 10, 10), ("2026-06-01", 30, 30)] * 3  # months apart: not compared
+    assert run.direction_agreement(sorted(far)) is None

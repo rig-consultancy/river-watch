@@ -337,7 +337,8 @@ function lineChart(el, layers, label) {
   }).filter((l) => l.pts.length);
   const legend = L.length > 1
     ? `<div class="chart-legend">${L.map((l) => `<span><i class="key ${l.cls}"></i>${l.name}</span>`).join("")}</div>` : "";
-  const W = el.clientWidth, H = el.clientHeight - (legend ? 24 : 0);
+  el.innerHTML = legend;
+  const W = el.clientWidth, H = el.clientHeight - (legend ? el.firstElementChild.offsetHeight : 0);
   const m = { l: 40, r: 12, t: 10, b: 24 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
   if (iw <= 0 || ih <= 0) return; // not laid out yet (hidden tab); the resize handler redraws
@@ -541,6 +542,10 @@ function drawCharts() {
   if (current.radar) {
     hy.push({ name: t("l_radar", { e: nf(current.radar.mae_pct) }), cls: "rad", rows: current.radar.series, key: "hyacinth_pct", gap: 30 });
   }
+  const lc = current.landsat_check;
+  if (lc?.series && !reg) {
+    hy.push({ name: t("l_landsat", { b: nf(lc.river_bias_pts) }), cls: "ls", rows: lc.series, key: "landsat_pct", dotsOnly: true });
+  }
   lineChart($("c-hy"), hy, t("c_hy"));
   const tu = [optical("turbid_pct")];
   if (reg) {
@@ -564,6 +569,22 @@ function drawTable() {
         `<td><a href="${photoUrl(s.scene, riverFeature(), 0.005)}" target="_blank" rel="noopener">${t("photo_link")}</a></td></tr>`
       : `<tr><td>${fmtDate(s.date)}</td>${cell(s.hyacinth_pct)}${cell(s.radar_pct)}${cell(s.hyacinth_km2, 3)}${cell(s.open_water_pct)}${cell(s.turbid_pct)}${cell(s.valid_fraction == null ? null : s.valid_fraction * 100, 0)}<td>${s.scene ? `<a href="${photoUrl(s.scene, riverFeature(), 0.005)}" target="_blank" rel="noopener">${t("photo_link")}</a>` : ""}</td></tr>`)
     .join("");
+}
+
+// ---------- cross-checks by other satellites ----------
+function drawChecks() {
+  const lc = current.landsat_check, rad = current.radar;
+  // Below 65% the other satellite is not much better than a coin toss at telling up from down.
+  const dir = (d) => (!d ? "–" : t("x_dir_val", { p: nf(d.share * 100, 0), n: nf(d.changes, 0) }) +
+    (d.share < 0.65 ? ` <span class="weak">${t("x_weak")}</span>` : ""));
+  const rows = [];
+  if (lc) rows.push([t("x_landsat"), nf(lc.pairs, 0), dir(lc.direction),
+    t("x_diff_ls", { d: nf(lc.river_mae_pts), b: nf(lc.river_bias_pts) }), lc.checked ? fmtDate(lc.checked) : "–"]);
+  if (rad) rows.push([t("x_radar"), nf(rad.pairs, 0), dir(rad.direction), t("x_diff", { d: nf(rad.mae_pct) }), t("x_every_run")]);
+  const heads = ["x_pairs", "x_dir", "x_diffh", "x_checked"].map((k) => t(k));
+  $("checks").hidden = !rows.length;
+  $("checks").querySelector(".check-cards").innerHTML = rows.map(([name, ...vals]) => `<div class="check-card"><h3>${name}</h3>
+    <dl>${vals.map((v, i) => `<dt>${heads[i]}</dt><dd>${v}</dd>`).join("")}</dl></div>`).join("");
 }
 
 function drawAbout() {
@@ -674,6 +695,7 @@ function renderAll(fit) {
   drawRegions();
   drawCharts();
   drawTable();
+  drawChecks();
   drawAbout();
   drawDetail();
 }

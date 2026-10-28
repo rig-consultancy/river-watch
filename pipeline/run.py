@@ -349,17 +349,18 @@ def calibrate_radar(history, rad):
         if near:
             o = min(near, key=lambda o: abs((o - d).days))
             above = np.cumsum(np.asarray(r["hist"])[::-1])[::-1] / r["n"] * 100  # % of pixels >= edge k
-            pairs.append((above, optical[o]))
+            pairs.append((above, optical[o], d.isoformat()))
     if len(pairs) < rad["min_pairs"]:
         return None
 
     candidates = np.nonzero((RADAR_EDGES[:-1] >= -25) & (RADAR_EDGES[:-1] <= -10))[0]
     def best(ps):
-        return min(candidates, key=lambda k: np.mean([abs(a[k] - y) for a, y in ps]))
+        return min(candidates, key=lambda k: np.mean([abs(a[k] - y) for a, y, _ in ps]))
     loo = [abs(pairs[i][0][best(pairs[:i] + pairs[i + 1:])] - pairs[i][1]) for i in range(len(pairs))]
     k = best(pairs)
     return {"bin": int(k), "threshold_db": float(RADAR_EDGES[k]), "pairs": len(pairs),
-            "mae_pct": round(float(np.mean(loo)), 1)}
+            "mae_pct": round(float(np.mean(loo)), 1),
+            "direction": direction_agreement([(d, y, float(a[k])) for a, y, d in pairs])}
 
 
 def radar_pct(r, k):
@@ -769,6 +770,34 @@ def repeat_noise(dates, values):
     return (float(np.mean(diffs)) * np.sqrt(np.pi) / 2, len(diffs)) if diffs else (None, 0)
 
 
+def direction_agreement(rows, min_change=5, max_gap=60):
+    """How often a second satellite moves the same way as Sentinel-2.
+
+    rows: (date, sentinel-2 %, other %) for dates both measured, in date order. Every step between
+    neighbouring rows at most max_gap days apart where Sentinel-2 changed by min_change points or
+    more (well above its noise) counts; it agrees when the other satellite changed the same way.
+    Returns {"share", "changes"}, or None with fewer than 5 such changes.
+    """
+    agree = n = 0
+    for (d0, a0, b0), (d1, a1, b1) in zip(rows, rows[1:]):
+        if (date.fromisoformat(d1) - date.fromisoformat(d0)).days > max_gap or abs(a1 - a0) < min_change:
+            continue
+        n += 1
+        agree += (a1 - a0) * (b1 - b0) > 0
+    return {"share": round(agree / n, 3), "changes": n} if n >= 5 else None
+
+
+def landsat_check(river_id):
+    """Summary of the Landsat 8/9 comparison (crosscheck_landsat.py) with every pair, or None."""
+    path = ROOT / f"data/validation/{river_id}-landsat.json"
+    if not path.exists():
+        return None
+    v = json.loads(path.read_text())
+    rows = [(p["date"], p["sentinel2_pct"], p["landsat_pct"]) for p in v["pairs"]]
+    return {**v["summary"], "checked": v.get("checked"), "direction": direction_agreement(rows),
+            "series": [{"date": d, "sentinel2_pct": a, "landsat_pct": b} for d, a, b in rows]}
+
+
 def write_web(river, cfg, segments, history, area):
     det, rad, qual = cfg["detection"], cfg.get("radar"), cfg["quality"]
     seg_px = area["px"]
@@ -906,9 +935,8 @@ def write_web(river, cfg, segments, history, area):
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "latest_date": dates[-1],
         "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"]},
-        # Independent check against Landsat 8/9 (see crosscheck_landsat.py), summary only.
-        "landsat_check": (json.loads((ROOT / f"data/validation/{river['id']}-landsat.json").read_text())["summary"]
-                          if (ROOT / f"data/validation/{river['id']}-landsat.json").exists() else None),
+        # Independent check against Landsat 8/9 (see crosscheck_landsat.py).
+        "landsat_check": landsat_check(river["id"]),
         # Whole-river evidence behind the flood test (see build_river_mask.py).
         "flood_test": (json.loads(river_mask_path(river["id"]).with_suffix(".json").read_text())
                        if river_mask_path(river["id"]).with_suffix(".json").exists() else None),
@@ -947,6 +975,7 @@ def write_web(river, cfg, segments, history, area):
     if cal:
         out["radar"] = {
             "threshold_db": cal["threshold_db"], "pairs": cal["pairs"], "mae_pct": cal["mae_pct"],
+            "direction": cal["direction"],
             "series": [{"date": d, "hyacinth_pct": radar_pct(r, cal["bin"])}
                        for d, r in sorted(history["radar"].items())],
         }
