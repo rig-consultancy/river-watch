@@ -141,6 +141,14 @@ pipeline/roadside.py        scheduled: new GeoTIFFs in data/roadside/images/<sit
 uv run --group detect python pipeline/roadside.py
 ```
 
+Satellite images are large and stay out of git; the detections they produce
+(`data/roadside/<site>/YYYY-MM-DD.json`, a few KB each) are committed. So: put new GeoTIFFs in
+`data/roadside/images/<site>/`, run the command above, commit `data/roadside/`, push. The daily
+workflow then re-tracks every site from the committed detections and republishes
+`roadside.html` (no detectors needed); a provider downloader running in the workflow can drop images
+in the same folder and the detectors are installed for that run. Until a site has detections,
+`uv run python pipeline/roadside.py --example` publishes made-up data and the page shows a banner.
+
 - **Vehicles:** YOLO oriented boxes trained on DOTA aerial images. On 20 held-out DOTA images it found
   88% of labelled vehicles (75% of its boxes matched a label; DOTA leaves some cars unlabelled, so
   this is a floor). With pixels made 2x / 3x coarser, 78% / 66%: at 30-50 cm a car is only 9-15 px.

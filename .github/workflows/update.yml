@@ -51,6 +51,18 @@ jobs:
       - name: Run pipeline
         run: uv run python pipeline/run.py
 
+      # Roadside watch: re-tracks and republishes from the committed detections (data/roadside/<site>/),
+      # so most days it needs no detectors. Images themselves aren't committed; if a downloader has
+      # put new ones in data/roadside/images/, the detectors are installed and run on them first.
+      # With no detections yet, the page keeps its example data.
+      - name: Roadside watch
+        run: |
+          if compgen -G "data/roadside/images/*/*.tif" > /dev/null; then
+            uv run --group detect python pipeline/roadside.py
+          else
+            uv run python pipeline/roadside.py
+          fi
+
       - name: Check published data
         run: uv run pytest -q -k published
 
@@ -58,8 +70,10 @@ jobs:
         run: |
           git config user.name "river-watch-bot"
           git config user.email "river-watch-bot@users.noreply.github.com"
-          git add data/history data/masks data/validation web/data
+          git add data/history data/masks data/validation data/roadside web/data
           git diff --cached --quiet || git commit -m "Data update $(date -u +%F)"
+          # A code push can land while this runs; put the data commit on top of it instead of failing.
+          git pull --rebase
           git push
 
       - uses: actions/upload-pages-artifact@v3
