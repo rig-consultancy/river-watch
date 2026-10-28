@@ -70,3 +70,25 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  # Load the deployed site and compare it with the repository: pages, scripts and data must be
+  # this commit's, and the newest image recent. Retries while GitHub Pages' cache catches up.
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # includes the data commit this run may have just pushed
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Check the live site
+        env:
+          SITE_URL: https://rig-consultancy.github.io/river-watch/
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            uv run pytest -q -k live && exit 0
+            sleep 30
+          done
+          exit 1

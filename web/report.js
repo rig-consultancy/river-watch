@@ -140,10 +140,12 @@ function fillControls() {
   $("month").innerHTML = months.map((mm) => `<option value="${mm}">${esc(fmtMonth(mm))}</option>`).join("");
   if (!months.includes(state.month)) state.month = months[0];
   $("month").value = state.month;
-  document.title = t("r_title", { river: data.river.name });
+  document.title = t("r_title", { river: state.lang === "mr" ? data.river.name_mr || data.river.name : data.river.name });
 }
 
 function sync() {
+  const months = data.series.map((s) => s.date.slice(0, 7));
+  if (!months.includes(state.month)) state.month = months[months.length - 1];  // before it goes in the URL
   const q = new URLSearchParams({ river: data.river.id, month: state.month });
   if (state.region !== "all") q.set("area", state.region);
   if (state.lang !== "en") q.set("lang", state.lang);

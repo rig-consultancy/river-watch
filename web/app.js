@@ -498,9 +498,11 @@ function drawTiles() {
         : reg ? t("n_outlook_area", { area: regionName(reg), date: fmtDate(look.target_date), e: nf(look.mae_segment) })
           : t("n_outlook", { lo: nf(lo.low), hi: nf(lo.high), date: fmtDate(look.target_date) });
 
-  $("t-turbid").textContent = last.turbid_pct == null ? "–" : `${nf(last.turbid_pct)}%`;
-  $("t-turbid-note").textContent = last.turbid_pct == null ? t("n_turbid_none")
-    : (reg ? t("n_whole_river") + " · " : "") + t("n_turbid", { w: nf(last.open_water_pct, 0) });
+  // Muddy water: the selected area's own figure on its latest date, else the whole river.
+  const mud = reg ? now?.turbid_pct : last.turbid_pct;
+  $("t-turbid").textContent = mud == null ? "–" : `${nf(mud)}%`;
+  $("t-turbid-note").textContent = mud == null ? t("n_turbid_none")
+    : reg ? t("n_turbid_area", { area: regionName(reg) }) : t("n_turbid", { w: nf(last.open_water_pct, 0) });
 }
 
 // ---------- regions table ----------
@@ -540,7 +542,12 @@ function drawCharts() {
     hy.push({ name: t("l_radar", { e: nf(current.radar.mae_pct) }), cls: "rad", rows: current.radar.series, key: "hyacinth_pct", gap: 30 });
   }
   lineChart($("c-hy"), hy, t("c_hy"));
-  lineChart($("c-tu"), [optical("turbid_pct")], t("c_tu"));
+  const tu = [optical("turbid_pct")];
+  if (reg) {
+    tu[0].name = t("l_whole");
+    tu.push({ name: t("l_region", { area: reg.id === "other" ? t("outside") : regionName(reg) }), cls: "reg", rows: reg.series, key: "turbid_pct" });
+  }
+  lineChart($("c-tu"), tu, t("c_tu"));
   if (selected != null) drawDetail();
 }
 

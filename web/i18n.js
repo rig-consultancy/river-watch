@@ -58,6 +58,7 @@ const STRINGS = {
     n_area_region: "km² of water in {area}",
     n_outlook_area: "{area}, by {date} · stretches ±{e} pts",
     n_whole_river: "whole river",
+    n_turbid_area: "of open water in {area}",
 
     copy_link: "Copy link",
     copied: "Link copied",
@@ -262,6 +263,7 @@ const STRINGS = {
     n_area_region: "{area} मधील चौ. किमी पाणी",
     n_outlook_area: "{area}, {date} पर्यंत · भाग ±{e} बिंदू",
     n_whole_river: "संपूर्ण नदी",
+    n_turbid_area: "{area} मधील मोकळ्या पाण्याचा",
 
     copy_link: "दुवा कॉपी करा",
     copied: "दुवा कॉपी झाला",

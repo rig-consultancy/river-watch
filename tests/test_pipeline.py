@@ -44,7 +44,9 @@ def test_process_day_counts_per_segment_and_ranges():
     keep = np.ones(12, bool)
     seg_idx = np.array([0] * 4 + [1] * 4 + [0, 0, 1, 1])
     res = run.process_day(px, keep, seg_idx, 2, DET)
-    hy0, _, strict0, loose0 = res["segments"][0]
+    hy0, _, strict0, loose0, muddy0, water0 = res["segments"][0]
+    assert water0 == 1 and muddy0 is None              # too little open water to judge muddiness
+    assert res["segments"][1][4:] == [0.0, 6]          # 6 clear-water pixels, none muddy
     assert hy0 == pytest.approx(4 / 6, abs=1e-3)       # 0.6, 0.5 and their copies
     assert strict0 == pytest.approx(4 / 6, abs=1e-3)   # NDVI > 0.35: same
     assert loose0 == pytest.approx(5 / 6, abs=1e-3)    # NDVI > 0.25 adds the borderline pixel

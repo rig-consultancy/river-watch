@@ -48,7 +48,7 @@ SCL_OK = [2, 4, 5, 6, 7]
 RADAR_EDGES = np.round(np.arange(-35, 5.001, 0.25), 2)
 # Bump when the way history numbers are computed changes; run.py then rebuilds the optical
 # history (from the local pixel cache where it exists).
-METHOD = 3
+METHOD = 4
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
@@ -278,6 +278,8 @@ def process_day(px, keep, seg_idx, n_segs, det):
     loose_count = np.bincount(seg_idx[hy_loose], minlength=n_segs)
     w_count = np.bincount(seg_idx[water], minlength=n_segs)
     nt_sum = np.bincount(seg_idx[water], weights=ndti[water], minlength=n_segs)
+    muddy = water & (ndti > det["turbid_ndti"])
+    muddy_count = np.bincount(seg_idx[muddy], minlength=n_segs)
     all_count = np.bincount(seg_idx[keep], minlength=n_segs)
 
     segs = []
@@ -286,8 +288,10 @@ def process_day(px, keep, seg_idx, n_segs, det):
             segs.append(None)
         else:
             nt = round(float(nt_sum[i] / w_count[i]), 4) if w_count[i] >= 5 else None
+            # [hyacinth, mean NDTI of open water, hyacinth strict, loose, muddy share of open water, open-water px]
             segs.append([round(float(hy_count[i] / total[i]), 3), nt,
-                         round(float(strict_count[i] / total[i]), 3), round(float(loose_count[i] / total[i]), 3)])
+                         round(float(strict_count[i] / total[i]), 3), round(float(loose_count[i] / total[i]), 3),
+                         round(float(muddy_count[i] / w_count[i]), 3) if w_count[i] >= 5 else None, int(w_count[i])])
     # Too little open water (low flow, river choked by weed) gives no reliable muddiness figure.
     enough_water = water.sum() >= max(50, 0.05 * ok.sum())
     return {
@@ -873,10 +877,21 @@ def write_web(river, cfg, segments, history, area):
         seen = np.isfinite(hy) * wts
         val = np.nansum(np.nan_to_num(hy) * wts, axis=1) / np.maximum(seen.sum(axis=1), 1)
         ok = seen.sum(axis=1) >= 0.5 * wts.sum()
+        # Muddy water in this area: share of its open water above the muddiness threshold.
+        muddy = []
+        for d in dates:
+            num = den = 0
+            for k in np.nonzero(member)[0]:
+                v = history["dates"][d]["segments"][k]
+                if v is not None and len(v) > 5 and v[4] is not None:
+                    num += v[4] * v[5]
+                    den += v[5]
+            muddy.append(round(num / den * 100, 2) if den >= 50 else None)
         region_out.append({
             "id": r["id"], "name": r["name"], "name_mr": r.get("name_mr"),
             "n_segments": int(member.sum()), "km": round(member.sum() * det["segment_length_m"] / 1000, 1),
-            "series": [{"date": d, "hyacinth_pct": round(float(v), 2)} for d, v, k in zip(dates, val, ok) if k],
+            "series": [{"date": d, "hyacinth_pct": round(float(v), 2), "turbid_pct": m}
+                       for d, v, k, m in zip(dates, val, ok, muddy) if k],
         })
 
     keys = ("hyacinth_pct", "hyacinth_km2", "open_water_pct", "turbid_pct", "mean_ndti", "valid_fraction",
