@@ -36,7 +36,10 @@ function applyStaticText() {
 // ---------- names ----------
 function segName(p) {
   const place = state.lang === "mr" ? p.place_mr || p.place : p.place;
-  return place ? t("near", { place }) : t("stretch", { n: nf(p.id + 1, 0) });
+  if (place) return t("near", { place });
+  const n = p.nearest;
+  if (n) return t("from_place", { km: nf(n.km), place: state.lang === "mr" ? n.name_mr || n.name : n.name });
+  return t("stretch", { n: nf(p.id + 1, 0) });
 }
 function regionName(r) {
   if (!r) return "";
@@ -464,8 +467,11 @@ function drawTiles() {
     : radarLast && radarLast.date > last.date
       ? t("n_pct_radar", { date: fmtDate(last.date), rdate: fmtDate(radarLast.date), rpct: nf(radarLast.hyacinth_pct) })
       : now?.range ? t("n_pct_range", { lo: nf(now.range[0]), hi: nf(now.range[1]) }) : t("n_pct");
-  $("t-area").textContent = nf(last.hyacinth_km2, 2);
-  $("t-area-note").textContent = reg ? t("n_area_whole") : t("n_area");
+  // Area covered: for a selected area, the latest reading of each of its stretches.
+  const mine = current.segments.features.map((f) => f.properties).filter((p) => p.measurable && inRegion(p));
+  const regKm2 = mine.reduce((s, p) => s + (p.hyacinth_pct / 100) * p.area_ha, 0) / 100;
+  $("t-area").textContent = nf(reg ? regKm2 : last.hyacinth_km2, 2);
+  $("t-area-note").textContent = reg ? t("n_area_region", { area: regionName(reg) }) : t("n_area");
 
   // Same time last year (closest clear date within 3 weeks of a year before).
   const yr = now && closestTo(rows, toT(now.date) - 365 * dayMs, 21);
@@ -480,16 +486,21 @@ function drawTiles() {
 
   const look = current.outlook;
   const lo = look?.river;
-  $("t-outlook").textContent = lo ? `~${nf(lo.pct)}%` : "–";
+  // For a selected area: its stretches' outlooks, weighted by their river area.
+  const withLook = mine.filter((p) => p.outlook);
+  const w = withLook.reduce((s, p) => s + p.area_ha, 0);
+  const regLook = reg && w ? withLook.reduce((s, p) => s + p.outlook.pct * p.area_ha, 0) / w : null;
+  $("t-outlook").textContent = reg ? (regLook == null ? "–" : `~${nf(regLook)}%`) : lo ? `~${nf(lo.pct)}%` : "–";
   $("t-outlook").className = "tile-value";
   $("t-outlook-note").textContent = !look ? t("n_outlook_none")
     : look.monsoon ? t("n_outlook_monsoon", { date: fmtDate(look.target_date) })
       : !lo ? t("n_outlook_none")
-        : t(reg ? "n_outlook_region" : "n_outlook", { lo: nf(lo.low), hi: nf(lo.high), date: fmtDate(look.target_date) });
+        : reg ? t("n_outlook_area", { area: regionName(reg), date: fmtDate(look.target_date), e: nf(look.mae_segment) })
+          : t("n_outlook", { lo: nf(lo.low), hi: nf(lo.high), date: fmtDate(look.target_date) });
 
   $("t-turbid").textContent = last.turbid_pct == null ? "–" : `${nf(last.turbid_pct)}%`;
   $("t-turbid-note").textContent = last.turbid_pct == null ? t("n_turbid_none")
-    : t("n_turbid", { w: nf(last.open_water_pct, 0) });
+    : (reg ? t("n_whole_river") + " · " : "") + t("n_turbid", { w: nf(last.open_water_pct, 0) });
 }
 
 // ---------- regions table ----------

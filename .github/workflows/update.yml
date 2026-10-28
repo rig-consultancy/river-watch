@@ -5,6 +5,7 @@ name: Update river data
 on:
   schedule:
     - cron: "30 1 * * *"   # daily 07:00 IST; Sentinel-2 passes every few days, extra runs are cheap no-ops
+    - cron: "30 13 * * *"  # and 19:00 IST, so a late or dropped scheduled run never leaves the site a day behind
     - cron: "0 2 15 10 *"  # 15 Oct: after the monsoon, rebuild the river area and flood test
   push:                    # publish code changes right away (the bot's own data commits don't trigger this)
     branches: [main]

@@ -1,12 +1,6 @@
 {
  "rivers": [
   {
-   "id": "indrayani-pcmc",
-   "name": "Indrayani (Dehu-Alandi)",
-   "name_mr": "इंद्रायणी (देहू-आळंदी)",
-   "latest_date": "2026-10-25"
-  },
-  {
    "id": "mula-mutha-pune",
    "name": "Mula-Mutha (Pune)",
    "name_mr": "मुळा-मुठा (पुणे)",
@@ -16,6 +10,12 @@
    "id": "pawana-pcmc",
    "name": "Pawana (Pimpri-Chinchwad)",
    "name_mr": "पवना (पिंपरी-चिंचवड)",
+   "latest_date": "2026-10-25"
+  },
+  {
+   "id": "indrayani-pcmc",
+   "name": "Indrayani (Dehu-Alandi)",
+   "name_mr": "इंद्रायणी (देहू-आळंदी)",
    "latest_date": "2026-10-25"
   }
  ]

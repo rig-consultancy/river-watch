@@ -481,7 +481,7 @@ def segment_places(river, segments, max_dist_m=3000):
     """Name each segment after the nearest OSM neighbourhood/village, if one is close enough."""
     path = ROOT / f"data/rivers/{river['id']}.places.geojson"
     if not path.exists():
-        return [None] * len(segments)
+        return [(None, None, None)] * len(segments)
     feats = json.loads(path.read_text())["features"]
     pts = [to_utm(shape(f["geometry"])) for f in feats]
     tree = STRtree(pts)
@@ -490,7 +490,10 @@ def segment_places(river, segments, max_dist_m=3000):
         mid = seg.interpolate(0.5, normalized=True)
         j = tree.nearest(mid)
         p = feats[j]["properties"]
-        names.append((p["name"], p.get("name_mr")) if pts[j].distance(mid) <= max_dist_m else (None, None))
+        dist = pts[j].distance(mid)
+        # Within reach: "Near X". Further out (sparse villages): the nearest place and how far.
+        names.append((p["name"], p.get("name_mr"), None) if dist <= max_dist_m
+                     else (None, None, {"name": p["name"], "name_mr": p.get("name_mr"), "km": round(dist / 1000, 1)}))
     return names
 
 
@@ -824,7 +827,7 @@ def write_web(river, cfg, segments, history, area):
     for i, seg in enumerate(segments):
         # Round to ~10 cm so output is byte-identical across machines (no spurious commits).
         geom = shapely.transform(to_wgs(seg.simplify(5)), lambda c: np.round(c, 6))
-        base = {"id": i, "place": places[i][0], "place_mr": places[i][1],
+        base = {"id": i, "place": places[i][0], "place_mr": places[i][1], "nearest": places[i][2],
                 "regions": regions[i][0], "wards": regions[i][1],
                 "km": round(i * det["segment_length_m"] / 1000, 1),
                 "area_ha": round(float(area["px"][i]) * RES * RES / 1e4, 1),
@@ -952,7 +955,9 @@ def write_web(river, cfg, segments, history, area):
     index["rivers"] = [r for r in index["rivers"] if r["id"] != river["id"]]
     index["rivers"].append({"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"),
                             "latest_date": dates[-1]})
-    index["rivers"].sort(key=lambda r: r["name"])
+    # Same order as config/rivers.yaml: the first river is the one the dashboard opens on.
+    order = [r["id"] for r in cfg["rivers"]]
+    index["rivers"].sort(key=lambda r: order.index(r["id"]) if r["id"] in order else len(order))
     index_path.write_text(json.dumps(index, indent=1, ensure_ascii=False))
     print(f"  wrote web/data/{river['id']}.json ({len(features)} segments, {len(dates)} dates)")
 

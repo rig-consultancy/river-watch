@@ -79,21 +79,26 @@ out tags geom;"""
 
 
 def fetch_places(river: dict) -> dict:
-    """Neighbourhood and village names, used to label river stretches ("Near Bopodi")."""
+    """Neighbourhood and village names, used to label river stretches ("Near Bopodi").
+
+    Places are mapped as points in the city but often only as areas (village boundaries) on the
+    outskirts, so areas count too, at their centre. A name mapped both ways is kept once.
+    """
     w, s, e, n = river["bbox"]
-    data = overpass(f"""[out:json][timeout:60];
-node["place"~"^(suburb|neighbourhood|quarter|village|town|hamlet)$"]["name"]({s},{w},{n},{e});
-out;""")
-    return {
-        "type": "FeatureCollection",
-        "features": [
-            {"type": "Feature",
-             "properties": {"name": el["tags"].get("name:en") or el["tags"]["name"],
-                            "name_mr": el["tags"].get("name:mr"), "place": el["tags"]["place"]},
-             "geometry": {"type": "Point", "coordinates": [el["lon"], el["lat"]]}}
-            for el in data["elements"]
-        ],
-    }
+    data = overpass(f"""[out:json][timeout:90];
+nwr["place"~"^(suburb|neighbourhood|quarter|village|town|hamlet)$"]["name"]({s},{w},{n},{e});
+out center tags;""")
+    features, seen = [], set()
+    for el in sorted(data["elements"], key=lambda el: el["type"] != "node"):  # points first
+        name = el["tags"].get("name:en") or el["tags"]["name"]
+        lon, lat = (el["lon"], el["lat"]) if "lon" in el else (el["center"]["lon"], el["center"]["lat"])
+        if name in seen:
+            continue
+        seen.add(name)
+        features.append({"type": "Feature",
+                         "properties": {"name": name, "name_mr": el["tags"].get("name:mr"), "place": el["tags"]["place"]},
+                         "geometry": {"type": "Point", "coordinates": [lon, lat]}})
+    return {"type": "FeatureCollection", "features": features}
 
 
 def main():

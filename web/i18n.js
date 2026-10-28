@@ -54,6 +54,10 @@ const STRINGS = {
     risk_item: "{p}% chance",
     near: "Near {place}",
     stretch: "Stretch {n}",
+    from_place: "{km} km from {place}",
+    n_area_region: "km² of water in {area}",
+    n_outlook_area: "{area}, by {date} · stretches ±{e} pts",
+    n_whole_river: "whole river",
 
     copy_link: "Copy link",
     copied: "Link copied",
@@ -254,6 +258,10 @@ const STRINGS = {
     risk_item: "{p}% शक्यता",
     near: "{place} जवळ",
     stretch: "भाग {n}",
+    from_place: "{place} पासून {km} किमी",
+    n_area_region: "{area} मधील चौ. किमी पाणी",
+    n_outlook_area: "{area}, {date} पर्यंत · भाग ±{e} बिंदू",
+    n_whole_river: "संपूर्ण नदी",
 
     copy_link: "दुवा कॉपी करा",
     copied: "दुवा कॉपी झाला",

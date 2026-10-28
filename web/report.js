@@ -22,7 +22,10 @@ const regionName = (r) => (r.id === "other" ? t("outside") : state.lang === "mr"
 const inRegion = (p) => state.region === "all" || (state.region === "other" ? !p.regions.length : p.regions.includes(state.region));
 function segName(p) {
   const place = state.lang === "mr" ? p.place_mr || p.place : p.place;
-  return place ? t("near", { place }) : t("stretch", { n: nf(p.id + 1, 0) });
+  if (place) return t("near", { place });
+  const n = p.nearest;
+  if (n) return t("from_place", { km: nf(n.km), place: state.lang === "mr" ? n.name_mr || n.name : n.name });
+  return t("stretch", { n: nf(p.id + 1, 0) });
 }
 
 // River-wide (or area) rows for a month, and the month's average.
