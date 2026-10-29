@@ -51,6 +51,16 @@ jobs:
       - name: Run pipeline
         run: uv run python pipeline/run.py
 
+      # Sharp images of the watched roads, bought from UP42 within the caps in config/roadside.yaml.
+      # Does nothing until the UP42_USERNAME / UP42_PASSWORD secrets exist. A UP42 problem (wrong
+      # password, a data licence not yet accepted in the UP42 console) fails only this step.
+      - name: Buy sharp images (UP42)
+        continue-on-error: true
+        env:
+          UP42_USERNAME: ${{ secrets.UP42_USERNAME }}
+          UP42_PASSWORD: ${{ secrets.UP42_PASSWORD }}
+        run: uv run python pipeline/up42_fetch.py
+
       # Roadside watch: re-tracks and republishes from the committed detections (data/roadside/<site>/),
       # so most days it needs no detectors. Images themselves aren't committed; if a downloader has
       # put new ones in data/roadside/images/, the detectors are installed and run on them first.

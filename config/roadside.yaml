@@ -54,3 +54,18 @@ land:
   drop_ndvi: 0.15          # changed: post-monsoon greenness fell by at least this...
   bare_ndvi: 0.3           # ...to below this, in the last two post-monsoon seasons
   min_pixels: 3            # ignore patches under 300 m²
+
+# Sharp images bought automatically from UP42 (up42_fetch.py), once the GitHub secrets
+# UP42_USERNAME and UP42_PASSWORD are set. 100 credits = €1. One image of the Antheia roads is
+# about 0.49 km²: Pléiades Neo (30 cm) about 880 credits, Pléiades (50 cm, collection phr,
+# product phr-display) about 490.
+up42:
+  enabled: true
+  collection: pneo               # Pléiades Neo, 30 cm
+  data_product: pneo-display     # natural-colour 8-bit GeoTIFF, ready for the detectors
+  delivery_time: MINUTES         # only scenes delivered within 10 minutes (charged as 0.1 km², not 5 km²)
+  max_cloud: 10                  # % of the scene
+  min_days_between: 14           # buy at most one image per fortnight
+  look_back_days: 90             # first run: newest suitable scene from the last 90 days
+  max_credits_per_order: 1200    # about €12
+  max_credits_per_month: 2000    # about €20: hard cap, nothing is ordered beyond it

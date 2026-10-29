@@ -141,6 +141,17 @@ pipeline/roadside.py        scheduled: new GeoTIFFs in data/roadside/images/<sit
 uv run --group detect python pipeline/roadside.py
 ```
 
+**Buying images automatically (UP42):** `pipeline/up42_fetch.py` runs in the daily workflow. It
+looks for a new Pléiades Neo (30 cm) scene over the roads at most once a fortnight, takes only scenes
+UP42 delivers within 10 minutes (charged as 0.1 km² instead of 5 km²), with under 10% cloud and
+covering every watched road, checks UP42's price, and orders it only within the caps in
+`config/roadside.yaml` (default about €12 per image, €20 per month). The delivered GeoTIFF goes to
+`data/roadside/images/<site>/`, roadside.py analyses it the same run, and orders are kept in
+`data/roadside/<site>/up42-orders.json`. One-time setup by the account owner: create the UP42 account
+and buy or request credits, accept the Pléiades Neo licence once in the UP42 console, and add the
+repository secrets `UP42_USERNAME` (account email) and `UP42_PASSWORD`. Use a UP42 account made for
+this, since UP42 signs scripts in with the account password.
+
 Satellite images are large and stay out of git; the detections they produce
 (`data/roadside/<site>/YYYY-MM-DD.json`, a few KB each) are committed. So: put new GeoTIFFs in
 `data/roadside/images/<site>/`, run the command above, commit `data/roadside/`, push. The daily
