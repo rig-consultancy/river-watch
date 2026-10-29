@@ -23,6 +23,9 @@ const STRINGS = {
     river: "River",
     area: "Area",
     all_areas: "Whole river",
+    ward: "Ward",
+    all_wards: "All wards",
+    n_stretches: "{n} stretches",
     meta: "Latest satellite image: {date} · {n} clear dates on record · updated automatically",
     load_error: "Could not load data: ",
 
@@ -341,6 +344,9 @@ const STRINGS = {
     river: "नदी",
     area: "क्षेत्र",
     all_areas: "संपूर्ण नदी",
+    ward: "प्रभाग",
+    all_wards: "सर्व प्रभाग",
+    n_stretches: "{n} भाग",
     meta: "नवीनतम उपग्रह प्रतिमा: {date} · {n} स्वच्छ दिवसांची नोंद · आपोआप अद्ययावत",
     load_error: "माहिती लोड झाली नाही: ",
 

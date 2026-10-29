@@ -114,6 +114,8 @@ def test_published_river_data_is_consistent(river):
     for f in d["segments"]["features"]:
         p = f["properties"]
         assert p["place"] or p["nearest"], f"stretch {p['id']} has no location"
+        # The ward picker pairs p.wards[i] with p.regions[i].
+        assert len(p["wards"]) == len(p["regions"]) and all(p["wards"]), p["id"]
         assert len(f["geometry"]["coordinates"]) >= 2
         if p["measurable"]:
             assert p["range"][0] <= p["hyacinth_pct"] <= p["range"][1] + 0.05

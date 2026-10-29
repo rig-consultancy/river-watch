@@ -54,14 +54,14 @@ function riverSvg(means) {
   const [y0, y1] = [Math.min(...pts.map((c) => c[1])), Math.max(...pts.map((c) => c[1]))];
   const W = 640, H = Math.round(W * (y1 - y0) / (x1 - x0) / Math.cos((y0 + y1) / 2 * Math.PI / 180)) || 300;
   const sx = (x) => ((x - x0) / (x1 - x0)) * (W - 20) + 10, sy = (y) => H - 10 - ((y - y0) / (y1 - y0)) * (H - 20);
-  const color = (v) => (v == null ? "#c9c9c4" : v < 5 ? "#8d9196" : v < 15 ? "#ec8a5e" : v < 30 ? "#e0602c" : v < 50 ? "#b8451a" : "#7f2c0e");
+  const color = (v) => (v == null ? "#c9c9c4" : v < 5 ? "#4b9bc8" : v < 15 ? "#ec8a5e" : v < 30 ? "#e0602c" : v < 50 ? "#b8451a" : "#7f2c0e");
   const lines = feats.map((f) => {
     const v = byId.get(f.properties.id), mine = inRegion(f.properties);
     const d = f.geometry.coordinates.map((c, i) => `${i ? "L" : "M"}${sx(c[0]).toFixed(1)},${sy(c[1]).toFixed(1)}`).join("");
     return `<path d="${d}" stroke="${mine ? color(v) : "#e2e1dc"}" stroke-width="${v >= 5 && mine ? 5 : 3}" fill="none" stroke-linecap="round"/>`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H + 10}" class="river-svg" role="img" aria-label="${esc(t("r_map"))}">${lines}</svg>
-    <div class="legend">${[["#8d9196", "<5%"], ["#ec8a5e", "5–15%"], ["#e0602c", "15–30%"], ["#b8451a", "30–50%"], ["#7f2c0e", "50%+"], ["#c9c9c4", t("r_no_view")]]
+    <div class="legend">${[["#4b9bc8", "<5%"], ["#ec8a5e", "5–15%"], ["#e0602c", "15–30%"], ["#b8451a", "30–50%"], ["#7f2c0e", "50%+"], ["#c9c9c4", t("r_no_view")]]
       .map(([c, l]) => `<span><i class="sw" style="background:${c}"></i>${l}</span>`).join("")}</div>`;
 }
 

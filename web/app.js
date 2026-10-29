@@ -13,8 +13,8 @@ const isoLocal = (t) => {
 const dayMs = 864e5;
 const toT = (d) => new Date(d + "T00:00:00").getTime();
 
-let map, segLayer, baseLayers = {}, current, riverIndex, idx = 0, playTimer = null, listMode = "worst", selected = null;
-const state = { lang: "en", region: "all" };
+let map, segLayer, riverLine, pendingFit = false, baseLayers = {}, current, riverIndex, idx = 0, playTimer = null, listMode = "worst", selected = null;
+const state = { lang: "en", region: "all", ward: "" };
 
 // ---------- language ----------
 const locale = () => (state.lang === "mr" ? "mr-IN" : "en-IN");
@@ -51,10 +51,16 @@ function segAreaLabel(p) {
   return regionName(current.regions.find((r) => r.id === p.regions[0]));
 }
 const inRegion = (p) => state.region === "all" || (state.region === "other" ? !p.regions.length : p.regions.includes(state.region));
+// A ward narrows the map and the stretch lists (the figures above stay for the whole area).
+// p.wards[i] is the ward of p.regions[i]; "pmc:<ward>" keeps PMC and PCMC ward names apart.
+const wardKeys = (p) => (p.wards || []).map((w, i) => `${p.regions[i]}:${w}`)
+  .filter((k) => state.region === "all" || k.startsWith(state.region + ":"));
+const inView = (p) => inRegion(p) && (!state.ward || wardKeys(p).includes(state.ward));
 const selectedRegion = () => current.regions.find((r) => r.id === state.region);
 
 function binColor(pct) {
-  if (pct == null || pct < BINS[0]) return css("--clear");
+  if (pct == null) return css("--clear");
+  if (pct < BINS[0]) return css("--water");
   if (pct < BINS[1]) return css("--ramp-1");
   if (pct < BINS[2]) return css("--ramp-2");
   if (pct < BINS[3]) return css("--ramp-3");
@@ -83,6 +89,7 @@ function initMap() {
   // so the map shows exactly the picture the numbers came from. Its URL follows the slider.
   baseLayers.sat = L.tileLayer("", { maxZoom: 19, maxNativeZoom: 15, attribution: "" });
   baseLayers.map.addTo(map);
+  new ResizeObserver(() => { if (pendingFit && current) fitView(); }).observe($("map"));
 
   document.querySelectorAll("[data-base]").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("[data-base]").forEach((o) => o.classList.toggle("on", o === b));
@@ -92,7 +99,7 @@ function initMap() {
 }
 
 function drawLegend() {
-  const items = [[css("--clear"), t("legend_under", { n: nf(BINS[0], 0) })]]
+  const items = [[css("--water"), t("legend_under", { n: nf(BINS[0], 0) })]]
     .concat(BINS.map((b, i) => [css(`--ramp-${i + 1}`),
       i < BINS.length - 1 ? `${nf(b, 0)}–${nf(BINS[i + 1], 0)}%` : `${nf(b, 0)}%+`]));
   $("legend").innerHTML = `<span>${t("legend")}</span>` +
@@ -109,7 +116,7 @@ function drawLegend() {
 const valueAt = (id) => current.segment_history.hyacinth_pct[idx][id];
 
 function segStyle(f) {
-  const p = f.properties, v = valueAt(p.id), mine = inRegion(p);
+  const p = f.properties, v = valueAt(p.id), mine = inView(p);
   // Flood test says "rooted": almost certainly not hyacinth, so it recedes; otherwise it stands out.
   if (greenChannel(p) && p.flood_test?.verdict === "rooted")
     return { color: css("--clear"), weight: 4, opacity: mine ? 0.7 : 0.2, dashArray: "6 5", lineCap: "butt" };
@@ -179,20 +186,36 @@ function segTip(p) {
 
 function drawSegments(fit) {
   if (segLayer) map.removeLayer(segLayer);
+  if (riverLine) map.removeLayer(riverLine);
+  // The whole river as one faint line underneath, so stretches in other areas, too narrow to
+  // measure or under cloud never leave a gap.
+  riverLine = L.geoJSON(current.segments, { interactive: false,
+    style: { color: css("--clear"), weight: 3, opacity: 0.45, lineCap: "round" } }).addTo(map);
   segLayer = L.geoJSON(current.segments, {
     style: segStyle,
     onEachFeature: (f, layer) => {
       layer.on("mousemove", (e) => showTip(segTip(f.properties), e.originalEvent.clientX, e.originalEvent.clientY));
       layer.on("mouseout", hideTip);
-      layer.on("click", () => { hideTip(); selectSegment(f.properties.id, false); });
+      // From the overview, a click also zooms in to that stretch.
+      layer.on("click", () => { hideTip(); selectSegment(f.properties.id, map.getZoom() < 14); });
     },
   }).addTo(map);
-  if (fit) {
-    map.invalidateSize();
-    const mine = current.segments.features.filter((f) => inRegion(f.properties));
-    map.fitBounds(L.geoJSON({ type: "FeatureCollection", features: mine.length ? mine : current.segments.features }).getBounds(),
-      { padding: [16, 16] });
-  }
+  if (fit) fitView();
+}
+
+// Zoom to the selected area or ward. A map without a size yet (page opened in a background tab)
+// would zoom all the way in, so wait until it has one.
+function fitView() {
+  const el = map.getContainer();
+  pendingFit = !el.clientWidth || !el.clientHeight;
+  if (pendingFit) return;
+  // Leaflet keeps the size it first measured (0 x 0 if the page loaded hidden) until told otherwise;
+  // invalidateSize() does nothing before the map has a view.
+  map._sizeChanged = true;
+  map.invalidateSize();
+  const mine = current.segments.features.filter((f) => inView(f.properties));
+  map.fitBounds(L.geoJSON({ type: "FeatureCollection", features: mine.length ? mine : current.segments.features }).getBounds(),
+    { padding: [24, 24], maxZoom: 15 });
 }
 
 // ---------- date slider ----------
@@ -237,8 +260,8 @@ function drawList() {
   const list = $("hotspots");
   // Rankings use only stretches we can stand behind; low-confidence ones stay on the map, faded.
   const feats = current.segments.features.map((f) => f.properties)
-    .filter((p) => inRegion(p) && p.measurable && p.confidence !== "low" && !p.unconfirmed);
-  const waiting = current.segments.features.filter((f) => inRegion(f.properties) && f.properties.unconfirmed).length;
+    .filter((p) => inView(p) && p.measurable && p.confidence !== "low" && !p.unconfirmed);
+  const waiting = current.segments.features.filter((f) => inView(f.properties) && f.properties.unconfirmed).length;
   const look = current.outlook;
   $("list-hint").textContent = (listMode === "risk" && look?.alert_pct
     ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : t("hint_list")) +
@@ -648,6 +671,7 @@ function syncUrl() {
   const q = new URLSearchParams();
   q.set("river", $("river").value);
   if (state.region !== "all") q.set("area", state.region);
+  if (state.ward) q.set("ward", state.ward);
   if (state.lang !== "en") q.set("lang", state.lang);
   if (selected != null) q.set("stretch", selected + 1);
   history.replaceState(null, "", `?${q}`);
@@ -670,8 +694,38 @@ function fillRegionSelect() {
 
 function setRegion(id) {
   state.region = id;
+  state.ward = "";
   $("region").value = id;
+  fillWardSelect();
   syncUrl();
+  renderAll(true);
+}
+
+// Wards the selected area's stretches run through, upstream to downstream, grouped by corporation.
+function fillWardSelect() {
+  const sel = $("ward"), first = new Map(), count = new Map();
+  current.segments.features.forEach(({ properties: p }) => {
+    if (!inRegion(p)) return;
+    wardKeys(p).forEach((k) => {
+      if (!first.has(k)) first.set(k, p.id);
+      count.set(k, (count.get(k) || 0) + 1);
+    });
+  });
+  const keys = [...first.keys()].sort((a, b) => first.get(a) - first.get(b));
+  const opt = (k) => `<option value="${k.replace(/"/g, "&quot;")}">${k.slice(k.indexOf(":") + 1)} · ${t("n_stretches", { n: nf(count.get(k), 0) })}</option>`;
+  sel.innerHTML = `<option value="">${t("all_wards")}</option>` + current.regions
+    .filter((r) => keys.some((k) => k.startsWith(r.id + ":")))
+    .map((r) => `<optgroup label="${regionName(r)}">${keys.filter((k) => k.startsWith(r.id + ":")).map(opt).join("")}</optgroup>`).join("");
+  if (!keys.includes(state.ward)) state.ward = "";
+  sel.value = state.ward;
+  sel.closest("label").hidden = !keys.length;
+}
+
+function setWard(w) {
+  state.ward = w;
+  selected = null;
+  syncUrl();
+  drawDetail();
   renderAll(true);
 }
 
@@ -680,7 +734,7 @@ function setLang(lang) {
   try { localStorage.setItem("lang", lang); } catch { /* private mode */ }
   syncUrl();
   applyStaticText();
-  if (current) { fillRiverSelect(); fillRegionSelect(); renderAll(false); }
+  if (current) { fillRiverSelect(); fillRegionSelect(); fillWardSelect(); renderAll(false); }
 }
 
 function renderAll(fit) {
@@ -708,6 +762,7 @@ async function loadRiver(id) {
   idx = current.segment_history.dates.length - 1;
   $("slider").max = idx;
   fillRegionSelect();
+  fillWardSelect();
   if (selected != null && !current.segments.features.some((f) => f.properties.id === selected)) selected = null;
   renderAll(true);
 }
@@ -719,6 +774,7 @@ async function main() {
   state.lang = q.get("lang") || saved || "en";
   if (!STRINGS[state.lang]) state.lang = "en";
   state.region = q.get("area") || "all";
+  state.ward = q.get("ward") || "";
   const st = parseInt(q.get("stretch"), 10);
   if (st > 0) selected = st - 1;
   applyStaticText();
@@ -729,6 +785,7 @@ async function main() {
   document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => setLang(b.dataset.lang)));
   document.querySelectorAll("[data-list]").forEach((b) => b.addEventListener("click", () => { listMode = b.dataset.list; renderAll(false); }));
   $("region").addEventListener("change", (e) => setRegion(e.target.value));
+  $("ward").addEventListener("change", (e) => setWard(e.target.value));
   $("d-close").addEventListener("click", () => { selected = null; syncUrl(); drawDetail(); });
   $("d-link").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(location.href); $("d-link").textContent = t("copied"); }
@@ -741,7 +798,7 @@ async function main() {
   fillRiverSelect();
   const wanted = q.get("river");
   if (wanted && riverIndex.rivers.some((r) => r.id === wanted)) sel.value = wanted;
-  sel.addEventListener("change", () => { selected = null; state.region = "all"; syncUrl(); loadRiver(sel.value); });
+  sel.addEventListener("change", () => { selected = null; state.region = "all"; state.ward = ""; syncUrl(); loadRiver(sel.value); });
   await loadRiver(sel.value);
   let rt;
   addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(drawCharts, 150); });
