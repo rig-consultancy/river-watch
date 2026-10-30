@@ -1,0 +1,22 @@
+# City-wide land watch (city_land.py): free Sentinel-2 images (10 m), no one in the loop.
+# 10 m pixels can't show a roadside pile, but they show open land that was green after earlier
+# monsoons and is bare now: dumping grounds, debris, or construction, ward by ward.
+
+cities:
+  - id: pcmc
+    name: Pimpri-Chinchwad (PCMC)
+    name_mr: पिंपरी-चिंचवड (PCMC)
+    wards: data/regions/pcmc-wards.geojson
+
+land:
+  start: "2017-01-01"
+  # Only the months the analysis uses: dry season (Feb-Apr) and after the monsoon (Oct-Dec).
+  months: [2, 3, 4, 10, 11, 12]
+  max_scene_cloud: 30
+  min_clear: 0.85          # a month's image is used if at least 85% of the city is cloud-free
+  max_new_per_run: 12      # spread the first download (about 60 images) over several runs
+  green_ndvi: 0.35         # after the monsoon (Oct-Dec), land above this is green
+  drop_ndvi: 0.15          # changed: post-monsoon greenness fell by at least this...
+  bare_ndvi: 0.3           # ...to below this, in the last two post-monsoon seasons
+  min_pixels: 5            # ignore patches under 500 m²
+  max_patches: 500         # publish the largest this many (ward figures count all of them)

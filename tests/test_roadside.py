@@ -189,3 +189,51 @@ def test_published_land_change_has_what_the_page_reads():
         for p in d["patches"]:
             assert len(p["series"]) == len(d["dates"]) and p["area_m2"] >= 300
             assert 18.4 < p["lat"] < 18.8 and 73.6 < p["lon"] < 74.0 and p["geometry"]["type"] in ("Polygon", "MultiPolygon")
+
+
+def test_city_packs_indices_compactly_and_finds_bare_patches_by_ward():
+    import city_land
+    from rasterio.transform import from_origin
+    from shapely.geometry import box as sbox
+    # int8 hundredths, with NaN kept as no-data.
+    stack = np.full((5, 1, 3), 0.1, "float32")
+    stack[3] = [[0.5, 0.1, np.nan]]  # NIR
+    packed = city_land.pack(stack)
+    ndvi = city_land.unpack(packed["ndvi"])
+    assert packed["ndvi"].dtype == np.int8 and ndvi[0, 0] == np.float32(0.67) and ndvi[0, 1] == 0 and np.isnan(ndvi[0, 2])
+    # A 20 x 10 px city (10 m pixels) split into two wards; a 3 x 3 px patch in the east ward turns bare.
+    tf = from_origin(370_000, 2_060_100, 10, 10)
+    west, east = sbox(370_000, 2_060_000, 370_100, 2_060_100), sbox(370_100, 2_060_000, 370_200, 2_060_100)
+    years = list(range(2019, 2027))
+    post = {y: np.full((10, 20), 0.6, "float32") for y in years}
+    for y in (2025, 2026):
+        post[y][2:5, 12:15] = 0.1
+    bsi = {y: np.full((10, 20), 0.1, "float32") for y in years}
+    land = {"green_ndvi": 0.35, "drop_ndvi": 0.15, "bare_ndvi": 0.3, "min_pixels": 5, "max_patches": 10}
+    city = {"id": "x", "name": "X", "name_mr": "X"}
+    res = city_land.analyse(city, [("W", west), ("E", east)], tf, 20, 10, np.ones((10, 20), bool),
+                            ["2026-10-01"], post, bsi, land)
+    (p,) = res["patches"]
+    assert p["area_m2"] == 900 and p["ward"] == "E" and p["first_bare_year"] == 2025
+    assert [w["changed_m2"] for w in res["wards"]] == [0, 900]
+    assert res["green_pct"][-1] == round(100 * (200 - 9) / 200, 1)
+
+
+def test_bare_since_counts_back_from_the_latest_season():
+    # A dry 2018 doesn't make it "bare since 2018": the current stretch began in 2024.
+    s = {2017: 0.6, 2018: 0.2, 2019: 0.6, 2023: 0.5, 2024: 0.1, 2025: 0.15, 2026: 0.12}
+    assert roadside_land.bare_since(s, 0.3) == 2024
+    assert roadside_land.bare_since({2025: 0.1, 2026: 0.5}, 0.3) is None
+
+
+def test_published_city_data_has_what_the_page_reads():
+    for city in json.loads((ROOT / "web/data/city-index.json").read_text()):
+        d = json.loads((ROOT / f"web/data/city-{city['id']}.json").read_text())
+        n = len(d["years"])
+        assert d["images"] == len(d["dates"]) and len(d["green_pct"]) == len(d["post_images"]) == n
+        assert d["patches_total"] >= len(d["patches"]) and sum(w["patches"] for w in d["wards"]) <= d["patches_total"]
+        assert [p["area_m2"] for p in d["patches"]] == sorted((p["area_m2"] for p in d["patches"]), reverse=True)
+        for p in d["patches"]:
+            assert len(p["series"]) == n and p["area_m2"] >= 500 and 18.5 < p["lat"] < 18.8 and 73.6 < p["lon"] < 74.0
+        for w in d["wards"]:
+            assert len(w["green_pct"]) == n and w["geometry"]["type"] in ("Polygon", "MultiPolygon")

@@ -190,6 +190,25 @@ in the same folder and the detectors are installed for that run. Until a site ha
   AGPL-3.0, which needs a commercial licence or a swap before this is offered as a closed service;
   AerialWaste is CC BY-NC-ND and was used only to score the detector, not to train it.
 
+## PCMC land watch (free, automatic)
+
+`city.html`: where open land across Pimpri-Chinchwad has turned bare, ward by ward, from free
+Sentinel-2 images (10 m) - dumping grounds, debris or construction, which look the same from space.
+Individual roadside piles are far below one pixel and can't be seen in free images.
+
+```
+config/city.yaml            cities, months used, thresholds
+pipeline/city_land.py       scheduled: clearest image of each Feb-Apr and Oct-Dec month since 2017, stored as
+                            int8 NDVI + bare-soil index (data/cache/city/, ~6 MB each) -> web/data/city-<id>.json
+```
+
+A patch counts when it was green after the earlier monsoons (Oct-Dec) and is bare after the last two
+(same test as the Antheia land change), and is at least 500 m². For PCMC (57 images, 2017-2026):
+2,221 patches, 552 ha, most turning bare in 2023-2025; wards 07, 52 and 06 have the most. Each ward
+also gets the share of its land that is green after each monsoon. A fresh workflow cache refills 12
+months a run; the published results are only replaced once every month is back.
+`uv run python pipeline/city_land.py --all` fetches everything at once.
+
 ## Deploy (fully automatic)
 
 1. Push this folder to a GitHub repository.

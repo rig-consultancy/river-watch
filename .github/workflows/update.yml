@@ -51,6 +51,11 @@ jobs:
       - name: Run pipeline
         run: uv run python pipeline/run.py
 
+      # City-wide land watch (free Sentinel-2): adds new dry-season / post-monsoon months, at most 12 per
+      # run (the first fill takes a few runs), and republishes city.html.
+      - name: City land watch
+        run: uv run python pipeline/city_land.py
+
       # Sharp images of the watched roads, bought from UP42 within the caps in config/roadside.yaml.
       # Does nothing until the UP42_USERNAME / UP42_PASSWORD secrets exist. A UP42 problem (wrong
       # password, a data licence not yet accepted in the UP42 console) fails only this step.

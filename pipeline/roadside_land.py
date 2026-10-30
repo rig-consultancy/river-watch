@@ -39,48 +39,63 @@ POST, DRY = (10, 11, 12), (2, 3, 4)
 # ---------------------------------------------------------------- images
 
 def fetch(site_id, aoi, land):
-    """Clearest image of every month not yet cached. Returns the grid (transform, w, h, mask)."""
+    """Clearest image of every month not yet cached. Returns the grid (transform, w, h, mask) and cache."""
     cache = ROOT / "data/cache/roadside/s2" / site_id
+    tf, w, h, mask = run.make_grid(aoi)
+    fetch_months(aoi, cache, land, lambda stack: {"bands": stack}, label=site_id)
+    return tf, w, h, mask, cache
+
+
+def read_stack(its, tf, w, h):
+    """Reflectance of BANDS for one day, mosaicking that day's tiles; clouds and shadows are NaN."""
+    stack = np.full((len(BANDS), h, w), np.nan, "float32")
+    for it in its:  # first clear pixel wins
+        scl = run.read_band(it.assets["SCL"].href, tf, w, h, Resampling.nearest)
+        off = 1000 if float(it.properties.get("s2:processing_baseline", "0")) >= 4.0 else 0
+        bs = [run.read_band(it.assets[b].href, tf, w, h, Resampling.bilinear).astype("float32") for b in BANDS]
+        ok = np.isin(scl, run.SCL_OK) & (bs[0] > 0) & np.isnan(stack[0])
+        for k, b in enumerate(bs):
+            stack[k][ok] = (b[ok] - off) / 10000
+    return stack
+
+
+def fetch_months(aoi, cache, land, save, months=None, max_new=None, label=""):
+    """Cache the clearest image of each month (only `months`, if given) as cache/<date>.npz.
+
+    save(stack) -> dict of arrays to store. At most `max_new` new months per call, so a long backfill
+    is spread over several runs. Returns how many months are still to fetch.
+    """
     cache.mkdir(parents=True, exist_ok=True)
     tf, w, h, mask = run.make_grid(aoi)
     items = run.search({"bbox": list(run.to_wgs(aoi.envelope).bounds)}, date.fromisoformat(land["start"]),
                        date.today(), {"max_scene_cloud": land["max_scene_cloud"]})
     by_month = defaultdict(list)
     for d, its in items.items():
-        by_month[d[:7]].append((np.mean([i.properties["eo:cloud_cover"] for i in its]), d, its))
+        if months is None or int(d[5:7]) in months:
+            by_month[d[:7]].append((np.mean([i.properties["eo:cloud_cover"] for i in its]), d, its))
     this_month = date.today().isoformat()[:7]
-
-    def read(its):
-        stack = np.full((len(BANDS), h, w), np.nan, "float32")
-        for it in its:  # mosaic tiles of the same day; first clear pixel wins
-            scl = run.read_band(it.assets["SCL"].href, tf, w, h, Resampling.nearest)
-            off = 1000 if float(it.properties.get("s2:processing_baseline", "0")) >= 4.0 else 0
-            bs = [run.read_band(it.assets[b].href, tf, w, h, Resampling.bilinear).astype("float32") for b in BANDS]
-            ok = np.isin(scl, run.SCL_OK) & (bs[0] > 0) & np.isnan(stack[0])
-            for k, b in enumerate(bs):
-                stack[k][ok] = (b[ok] - off) / 10000
-        return stack
+    # The current month stays open until it's over: a clearer day may still come.
+    todo = [m for m in sorted(by_month)
+            if not any(cache.glob(f"{m}-*.npz")) and not (m != this_month and (cache / f"{m}.none").exists())]
 
     def month(m):
-        # The current month stays open until it's over: a clearer day may still come.
-        if any(cache.glob(f"{m}-*.npz")) or (m != this_month and (cache / f"{m}.none").exists()):
-            return
         for _, d, its in sorted(by_month[m], key=lambda x: x[0])[:3]:
             try:
-                stack = read(its)
+                stack = read_stack(its, tf, w, h)
             except Exception as e:  # noqa: BLE001 - an unreadable tile: try the month's next clearest day
                 print(f"  {m} {d}: {type(e).__name__}", flush=True)
                 continue
             if (~np.isnan(stack[0]))[mask].mean() >= land["min_clear"]:
-                np.savez_compressed(cache / f"{d}.npz", bands=stack)
-                print(f"  {site_id} {d}", flush=True)
+                np.savez_compressed(cache / f"{d}.npz", **save(stack))
+                print(f"  {label} {d}", flush=True)
                 return
         if m != this_month:
             (cache / f"{m}.none").touch()
 
+    batch = todo if max_new is None else todo[-max_new:]  # newest first matters most for the page
     with ThreadPoolExecutor(6) as ex:
-        list(ex.map(month, sorted(by_month)))
-    return tf, w, h, mask, cache
+        list(ex.map(month, batch))
+    return len(todo) - len(batch)
 
 
 # ---------------------------------------------------------------- analysis (no downloads)
@@ -120,6 +135,16 @@ def turned_bare(post_ndvi, post_bsi, candidates, land):
         lost = (candidates & (base > land["green_ndvi"]) & (base - now >= land["drop_ndvi"])
                 & (now < land["bare_ndvi"]) & (now_bsi > -0.05))
     return lost, before
+
+
+def bare_since(by_year, bare):
+    """First year of the bare stretch that runs up to the latest season (an earlier dry year doesn't count)."""
+    first = None
+    for y in sorted(by_year, reverse=True):
+        if not by_year[y] < bare:
+            break
+        first = y
+    return first
 
 
 def analyse(site, geo, buildings, tf, w, h, aoi, cache, land, wards):
@@ -163,7 +188,7 @@ def analyse(site, geo, buildings, tf, w, h, aoi, cache, land, wards):
         last = sorted(post)[-1]
         with np.errstate(invalid="ignore"):
             series = [round(float(np.nanmean(ndvi[k][m])), 3) for k in range(len(dates))]
-            first = next((y for y in sorted(post) if y > before[0] and np.nanmedian(post[y][m]) < land["bare_ndvi"]), None)
+            first = bare_since({y: np.nanmedian(post[y][m]) for y in post}, land["bare_ndvi"])
         series = [None if np.isnan(v) else v for v in series]  # cloud over the patch that month
         # Still bare through the latest monsoon (Jul-Oct): covered ground (construction, paving, a heap),
         # not land that greens up again.

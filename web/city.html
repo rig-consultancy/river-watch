@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCMC Land Watch</title>
+<meta name="description" content="Where open land in Pimpri-Chinchwad has turned bare (dumping grounds, debris or construction), ward by ward, from free Sentinel-2 satellite images.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="roadside.css">
+<link rel="stylesheet" href="city.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1 data-i18n="cw_title">PCMC Land Watch</h1>
+    <p class="sub" data-i18n="cw_sub">Where open land has turned bare (dumping grounds, debris or construction), ward by ward, from free satellite images</p>
+  </div>
+  <div class="controls">
+    <label><span data-i18n="cw_city">City</span> <select id="city"></select></label>
+    <div class="seg" role="group" aria-label="Language">
+      <button type="button" data-lang="en" lang="en">English</button>
+      <button type="button" data-lang="mr" lang="mr">मराठी</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <p class="meta"><span id="meta">Loading…</span> · <a href="./" data-i18n="rs_back">River Watch</a> · <a href="roadside.html" data-i18n="rs_link">Roadside garbage</a></p>
+  <p class="scope-note" data-i18n-html="cw_scope"></p>
+
+  <section class="tiles four" aria-label="Latest figures">
+    <div class="tile"><div class="tile-label" data-i18n="cw_t_bare">Green land turned bare</div><div class="tile-value" id="t-bare">–</div><div class="tile-note" id="t-bare-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="cw_t_big">Largest patch</div><div class="tile-value" id="t-big">–</div><div class="tile-note" id="t-big-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="cw_t_ward">Ward with most change</div><div class="tile-value small" id="t-ward">–</div><div class="tile-note" id="t-ward-note"></div></div>
+    <div class="tile"><div class="tile-label" data-i18n="cw_t_green">Green after the monsoon</div><div class="tile-value" id="t-green">–</div><div class="tile-note" id="t-green-note"></div></div>
+  </section>
+
+  <section class="mapwrap">
+    <div class="panel map-panel">
+      <div class="panel-head">
+        <h2 data-i18n="cw_map_title">Land turned bare, by ward</h2>
+        <button type="button" class="btn" id="show-all" hidden data-i18n="cw_show_all">Whole city</button>
+      </div>
+      <div id="map" role="region" aria-label="Map of the city"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="panel hot-panel">
+      <div class="panel-head"><h2 id="list-title"></h2></div>
+      <p class="hint" data-i18n="cw_hint">Largest first. Select a ward on the map to see only its patches.</p>
+      <ol id="spots" class="spots"></ol>
+    </div>
+  </section>
+
+  <section class="panel wards-panel">
+    <div class="panel-head"><h2 data-i18n="cw_wards_title">By ward</h2></div>
+    <div class="table-scroll"><table id="wards"><thead><tr>
+      <th data-i18n="rs_w_ward">Ward</th><th data-i18n="cw_w_area">Area</th><th data-i18n="cw_w_changed">Turned bare</th>
+      <th data-i18n="cw_w_patches">Patches</th><th id="w-green-then"></th><th id="w-green-now"></th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="charts one">
+    <div class="panel">
+      <div class="panel-head"><h2 data-i18n="cw_c_green">Land that is green after the monsoon</h2><span class="unit" data-i18n="cw_u_green">% of the city, Oct–Dec</span></div>
+      <div class="chart" id="c-green"></div>
+    </div>
+  </section>
+
+  <section class="panel about">
+    <h2 data-i18n="about_title">How this works</h2>
+    <ul>
+      <li data-i18n-html="cw_about_images"></li>
+      <li data-i18n-html="cw_about_change"></li>
+      <li data-i18n-html="cw_about_what"></li>
+      <li data-i18n-html="cw_about_green"></li>
+    </ul>
+    <p data-i18n-html="cw_about_limits"></p>
+    <p class="credits" data-i18n="cw_credits">Contains modified Copernicus Sentinel-2 data, processed via Microsoft Planetary Computer. PCMC ward boundaries: DataMeet (CC BY-SA 2.5 India). Base map © OpenStreetMap contributors.</p>
+  </section>
+</main>
+
+<div class="tooltip" id="tip" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="i18n.js"></script>
+<script src="city.js"></script>
+</body>
+</html>
