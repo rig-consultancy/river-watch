@@ -87,6 +87,39 @@ cleanup:
   rain_mm: 25
   river_wide_share: 0.3
 
+# Planted-weed test (pipeline/synthetic_test.py): mats of these sizes are planted into clear,
+# almost weed-free images and measured with the normal rule. Brightness (red + NIR reflectance) of
+# a dense mat and of river water decides how a part-covered pixel mixes; typical values for
+# floating plants and turbid water, also tried at half and double their ratio.
+synthetic:
+  sizes_m2: [100, 300, 1000, 3000, 10000]
+  big_m2: 1000               # "large mats" in the summary: this size and up
+  dates: 8                   # clear dates used, spread over the years
+  max_background_pct: 2      # a date counts as almost weed-free below this cover
+  mat_brightness: 0.35
+  water_brightness: 0.10
+
+# Muddy water checks. Dry weather: under dry_mm of rain over the dry_days up to an image. A stretch
+# is flagged "muddier than the rest" when, on at least min_readings dry-weather images, its open
+# water was redder (NDTI) than the river's middle stretch that day on min_share of them, by
+# min_diff or more at the median (and it is not a low-confidence stretch, where bank pixels mix in).
+# Rain check: images after wet_mm or more in 3 days against dry ones within 30 days.
+muddy:
+  dry_mm: 1
+  dry_days: 7
+  min_water_px: 20
+  min_readings: 30
+  min_share: 0.9
+  min_diff: 0.04
+  wet_mm: 10
+  min_wet: 10
+
+# Alerts (dashboard list and web/feed.xml): changes in the last `days` days on stretches that are
+# not low-confidence. A stretch crossing the outlook's alert_pct, or rising spread_pts within 3 weeks.
+alerts:
+  days: 120
+  spread_pts: 15
+
 # Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
 # banks fall in both is a border stretch and counts towards both). See data/regions/README.md.
 regions:

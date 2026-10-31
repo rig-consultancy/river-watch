@@ -14,6 +14,7 @@ pipeline/fetch_rivers.py    one-off: river outline + place names (English, Marat
 pipeline/run.py             scheduled: Sentinel-2 -> per-500 m stats -> data/history/ + web/data/
 pipeline/build_river_mask.py after each monsoon (CI runs it on 15 Oct): river area + flood test -> data/masks/
 pipeline/crosscheck_landsat.py monthly (CI, 1st of the month, --new): independent Landsat 8/9 check -> data/validation/
+pipeline/synthetic_test.py   yearly (CI, 15 Oct): planted-weed test on real clear images -> data/validation/
 data/regions/               PMC and PCMC ward boundaries (see its README for sources)
 web/                        dashboard and monthly report (report.html), English and Marathi (web/i18n.js)
 tests/                      uv run pytest: calculations and the published data
@@ -72,6 +73,27 @@ tests/                      uv run pytest: calculations and the published data
   for the Sentinel-1 radar, the days compared, how often they moved the same way as Sentinel-2
   when it changed by 5 points or more, the typical difference, and when Landsat was last checked;
   Landsat readings are also plotted on the hyacinth chart.
+- **Landsat check of muddy water:** the same pairs also compare the mean NDTI of open water seen by
+  both satellites (the share above the muddiness threshold is almost always 0 here, so it can't be
+  compared). Shown in the dashboard's "How the figures are checked" panel.
+- **Planted-weed test:** `synthetic_test.py` plants mats of 100 m² to 1 ha into 8 clear, almost
+  weed-free images per river (grown over river pixels on a 2 m grid, mixed with the real pixel in
+  reflectance, mat NDVI from the river's own dense mats) and measures them with the normal rule.
+  Result: every mat is seen; mats of 1 ha are measured within about 1-6% of their area, but small
+  ones are over-counted (100 m² reads as about twice its size), because a pixel about 20% covered
+  by a dense mat already passes the threshold. Mat and water brightness are assumed (config
+  `synthetic`) and also tried at half and double their ratio.
+- **Muddier than the rest:** on dry-weather images (under 1 mm of rain in 7 days) each stretch's
+  mean NDTI is compared with the river's middle stretch that day; one that is redder on at least
+  90% of 30+ dry days by 0.04 or more is flagged (not low-confidence stretches, where bank pixels
+  mix in). Possible causes: a drain or outlet upstream, or a shallow muddy bed.
+- **Rain check of muddy water:** images after 10 mm of rain in 3 days against dry ones within 30
+  days. Rain brings cloud, so each river has only 3-5 such images: no verdict yet, and the
+  dashboard says so.
+- **Alerts:** a stretch crossing the alert level, rising 15 points within 3 weeks, or a probable
+  clean-up, in the last 120 days (not low-confidence stretches or unconfirmed jumps). Shown in the
+  dashboard's Alerts tab and published as an Atom feed, `web/feed.xml`, for feed readers or
+  feed-to-email services; no account or key is needed.
 - **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
   month's average and range, change, river map, worst stretches, drops and data quality.
 - **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).

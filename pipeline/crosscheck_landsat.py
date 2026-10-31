@@ -28,6 +28,9 @@ from shapely import STRtree, points
 from run import (ROOT, STAC_URL, day_pixels, load_river, make_grid, make_segments, read_band,
                  reject_dates, river_area, search)
 
+# Bump when what is stored per pair changes; --new then compares every pair again.
+VERSION = 3  # 2: muddy water share; 3: and mean NDTI of open water
+
 # QA_PIXEL bits: 1 dilated cloud, 2 cirrus, 3 cloud, 4 cloud shadow.
 QA_BAD = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
 
@@ -39,17 +42,19 @@ def landsat_scenes(river, since, until):
     return sorted(items, key=lambda it: it.datetime)
 
 
-def landsat_ndvi(item, tf, w, h, mask):
-    """NDVI per river-corridor pixel from one Landsat scene (NaN where cloudy or no data)."""
-    red, nir = (read_band(item.assets[b].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
-                for b in ("red", "nir08"))
+def landsat_indices(item, tf, w, h, mask):
+    """NDVI, NDWI and NDTI per river-corridor pixel from one Landsat scene (NaN where cloudy or
+    no data), defined as for Sentinel-2."""
+    green, red, nir = (read_band(item.assets[b].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
+                       * 0.0000275 - 0.2 for b in ("green", "red", "nir08"))  # Collection 2 reflectance scale
     qa = read_band(item.assets["qa_pixel"].href, tf, w, h, Resampling.nearest)[mask]
-    red, nir = red * 0.0000275 - 0.2, nir * 0.0000275 - 0.2  # Collection 2 surface reflectance scale
     with np.errstate(invalid="ignore", divide="ignore"):
-        ndvi = (nir - red) / (nir + red)
-    ndvi[(qa & QA_BAD) > 0] = np.nan
-    ndvi[(red <= 0) | (nir <= 0) | (qa == 1)] = np.nan  # qa 1 = fill
-    return ndvi
+        out = {"ndvi": (nir - red) / (nir + red), "ndwi": (green - nir) / (green + nir),
+               "ndti": (red - green) / (red + green)}
+    bad = ((qa & QA_BAD) > 0) | (green <= 0) | (red <= 0) | (nir <= 0) | (qa == 1)  # qa 1 = fill
+    for v in out.values():
+        v[bad] = np.nan
+    return out
 
 
 def build(river, cfg, new_only=False, max_days=1):
@@ -60,8 +65,8 @@ def build(river, cfg, new_only=False, max_days=1):
     area_id = hashlib.sha1(np.packbits(river_px).tobytes()).hexdigest()[:12]
     out = ROOT / f"data/validation/{river['id']}-landsat.json"
     old = json.loads(out.read_text()) if out.exists() else None
-    if not (new_only and old and old.get("river_area") == area_id):
-        old = None  # first check, or the river area changed: compare every pair again
+    if not (new_only and old and old.get("river_area") == area_id and old.get("version") == VERSION):
+        old = None  # first check, the river area or what is stored changed: compare every pair again
     # Compare only pixels at least 20 m inside the river: there a whole 30 m Landsat pixel is
     # river, so the comparison isn't dominated by bank pixels that Landsat mixes in.
     inner = river_px.copy()
@@ -96,15 +101,16 @@ def build(river, cfg, new_only=False, max_days=1):
     def compare(pair):
         d, it = pair
         try:
-            ls = landsat_ndvi(it, tf, w, h, mask)
+            ls_px = landsat_indices(it, tf, w, h, mask)
             # Sentinel-2 pixels from the cache, or downloaded again (GitHub's cache may not have them).
             s2_items = [] if (ROOT / f"data/cache/{river['id']}/{d}.npz").exists() else [
                 s for s in search(river, date.fromisoformat(d), date.fromisoformat(d), det).get(d, [])
                 if s.id in hist["dates"][d]["scenes"]]
-            s2 = day_pixels(river["id"], d, s2_items, tf, w, h, mask)["ndvi"]
+            s2_px = day_pixels(river["id"], d, s2_items, tf, w, h, mask)
         except Exception as e:
             print(f"  {it.id}: failed ({type(e).__name__})")
             return None
+        ls, s2 = ls_px["ndvi"], s2_px["ndvi"]
         both = keep & np.isfinite(ls) & np.isfinite(s2)
         if both.sum() < 0.5 * keep.sum():
             return None  # mostly cloudy in one of them
@@ -114,9 +120,19 @@ def build(river, cfg, new_only=False, max_days=1):
         sa = np.bincount(idx, weights=a, minlength=n_segs) / np.maximum(n, 1) * 100
         sb = np.bincount(idx, weights=b, minlength=n_segs) / np.maximum(n, 1) * 100
         big = n >= 100  # stretches with at least 1 ha of inner river seen by both
+        # Muddy water: on pixels both see as open water, the share above the muddiness threshold.
+        water = (both & (s2_px["ndwi"] > det["water_ndwi"]) & (ls_px["ndwi"] > det["water_ndwi"])
+                 & (s2 <= thr) & (ls <= thr) & np.isfinite(s2_px["ndti"]) & np.isfinite(ls_px["ndti"]))
+        muddy = {} if water.sum() < 50 else {
+            "water_pixels": int(water.sum()),
+            "sentinel2_muddy": round(float((s2_px["ndti"][water] > det["turbid_ndti"]).mean() * 100), 2),
+            "landsat_muddy": round(float((ls_px["ndti"][water] > det["turbid_ndti"]).mean() * 100), 2),
+            # Muddiness as a continuous value (the share above the threshold is mostly 0 here).
+            "sentinel2_ndti": round(float(s2_px["ndti"][water].mean()), 4),
+            "landsat_ndti": round(float(ls_px["ndti"][water].mean()), 4)}
         return {"date": d, "landsat_date": it.datetime.date().isoformat(), "landsat_id": it.id,
                 "pixels": int(both.sum()), "sentinel2_pct": round(float(a.mean() * 100), 2),
-                "landsat_pct": round(float(b.mean() * 100), 2),
+                "landsat_pct": round(float(b.mean() * 100), 2), **muddy,
                 "stretches": [[int(k), round(float(sa[k]), 1), round(float(sb[k]), 1)] for k in np.nonzero(big)[0]]}
 
     with ThreadPoolExecutor(4) as pool:
@@ -141,8 +157,14 @@ def build(river, cfg, new_only=False, max_days=1):
         "stretch_mae_pts": round(float(np.mean(np.abs(st[:, 0] - st[:, 1]))), 1) if len(st) else None,
         "stretch_correlation": round(float(np.corrcoef(st[:, 0], st[:, 1])[0, 1]), 3) if len(st) > 2 else None,
     }
+    md = np.array([(r["sentinel2_ndti"], r["landsat_ndti"]) for r in results if "landsat_ndti" in r])
+    if len(md) > 2:
+        summary.update({"ndti_pairs": len(md),
+                        "ndti_mae": round(float(np.mean(np.abs(md[:, 0] - md[:, 1]))), 3),
+                        "ndti_bias": round(float(np.mean(md[:, 1] - md[:, 0])), 3),
+                        "ndti_correlation": round(float(np.corrcoef(md[:, 0], md[:, 1])[0, 1]), 3)})
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"summary": summary, "checked": date.today().isoformat(), "river_area": area_id,
+    out.write_text(json.dumps({"summary": summary, "checked": date.today().isoformat(), "river_area": area_id, "version": VERSION,
                                "pairs": results}, separators=(",", ":")))
     print(f"  {summary}")
 

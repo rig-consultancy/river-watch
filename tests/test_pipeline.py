@@ -169,3 +169,49 @@ def test_direction_agreement_counts_only_real_changes():
     assert r == {"share": round(5 / 6, 3), "changes": 6}
     far = [("2026-01-01", 10, 10), ("2026-06-01", 30, 30)] * 3  # months apart: not compared
     assert run.direction_agreement(sorted(far)) is None
+
+
+def test_planted_mat_mixing_and_area():
+    import synthetic_test as st
+    # A pixel without mat keeps its value; a fully covered one reads as the mat.
+    assert st.mixed_ndvi(0.0, 0.85, -0.2, 0.35, 0.10) == pytest.approx(-0.2)
+    assert st.mixed_ndvi(1.0, 0.85, -0.2, 0.35, 0.10) == pytest.approx(0.85)
+    # A bright mat weighs more than its share: 20% cover already reaches the 0.3 threshold.
+    assert st.mixed_ndvi(0.2, 0.85, -0.2, 0.35, 0.10) == pytest.approx(0.29, abs=0.01)
+    river = np.zeros((40, 40), bool)
+    river[15:25, :] = True  # a 100 m wide channel
+    cover = st.plant(river, np.random.default_rng(0), 1000, (20, 20))
+    assert sum(cover.values()) * 100 == pytest.approx(1000, abs=4)  # planted area, to the 2 m grid
+    assert all(river[r, c] and 0 < f <= 1 for (r, c), f in cover.items())  # only on the river
+
+
+def test_alerts_above_spread_cleanup_and_unconfirmed():
+    dates = [f"2026-03-{d:02d}" for d in (1, 6, 11, 16, 21, 26)]
+    hy = np.full((6, 4), 5.0)
+    hy[:, 0] = [5, 10, 35, 36, 35, 34]   # crosses 30% on 11 Mar
+    hy[:, 1] = [5, 22, 23, 22, 21, 22]   # jumps 17 points on 6 Mar
+    hy[:, 2] = [5, 25, 26, 26, 27, 26]   # same, but a low-confidence stretch
+    hy[:, 3] = [5, 5, 5, 5, 5, 40]       # latest jump, not confirmed yet
+    conf = {0: ("high", []), 1: ("medium", []), 2: ("low", []), 3: ("high", [])}
+    events = [{"segment": 0, "from": "2026-03-21", "to": "2026-03-26", "before": 35, "after": 10, "cause": "removal"}]
+    got = run.alerts(dates, hy, np.array([False, False, False, True]), conf, events, {"days": 120, "spread_pts": 15}, 30)
+    assert [(a["date"], a["type"], a["segment"]) for a in got] == [
+        ("2026-03-26", "cleanup", 0), ("2026-03-11", "above", 0), ("2026-03-06", "spread", 1)]
+
+
+def test_muddier_stretch_and_rain_check():
+    dates = [f"2026-01-{d:02d}" for d in range(1, 31)]
+    # 12 stretches; stretch 3 is redder (higher NDTI) than the rest every day.
+    seg = lambda k: [0.0, -0.10 + (0.06 if k == 3 else 0.001 * k), 0, 0, 0.0, 50]
+    history = {"dates": {d: {"segments": [seg(k) for k in range(12)], "mean_ndti": -0.1} for d in dates}}
+    for d in ("2026-01-19", "2026-01-20", "2026-01-21"):  # within 3 days of the rain: muddier
+        history["dates"][d]["mean_ndti"] = -0.05
+    rain = {d: 0.0 for d in dates} | {"2026-01-19": 30.0}
+    cfg = {"dry_mm": 1, "dry_days": 7, "min_water_px": 20, "min_readings": 10, "wet_mm": 10, "min_wet": 1}
+    dry = run.dry_days(dates, rain, cfg)
+    assert "2026-01-20" not in dry and "2026-01-10" in dry
+    m = run.muddier_stretches(dates, history, dry, cfg)
+    assert m[3]["share_above"] == 1.0 and m[3]["median_diff"] > 0.04
+    assert m[0]["share_above"] == 0.0
+    rc = run.muddy_rain_check(dates, history, rain, dry, cfg)
+    assert rc["share_muddier"] == 1.0 and rc["median_change"] == pytest.approx(0.05)

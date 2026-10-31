@@ -266,6 +266,8 @@ function drawList() {
   $("list-hint").textContent = (listMode === "risk" && look?.alert_pct
     ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : t("hint_list")) +
     (waiting ? " " + t("hint_unconfirmed", { n: nf(waiting, 0) }) : "");
+  if (listMode === "alerts") return drawAlerts(list);
+  if (listMode === "muddy") return drawMuddier(list);
   let rows;
   if (listMode === "risk") {
     rows = feats.filter((p) => p.outlook).sort((a, b) => b.outlook.p_alert - a.outlook.p_alert || b.outlook.pct - a.outlook.pct)
@@ -282,6 +284,43 @@ function drawList() {
     li.innerHTML = `<button type="button"><span class="rank">${nf(i + 1, 0)}</span>
       <span class="hs-name">${segName(p)}<small>${segAreaLabel(p)} ${confBadge(p)}</small></span><span class="hs-val">${val}</span>
       <span class="hs-bar"><span style="width:${Math.min(100, bar)}%;background:${color}"></span></span></button>`;
+    li.querySelector("button").addEventListener("click", () => selectSegment(p.id, true));
+    list.appendChild(li);
+  });
+}
+
+// Recent alerts in the selected area or ward, newest first; the same list is the feed.
+function drawAlerts(list) {
+  const props = new Map(current.segments.features.map((f) => [f.properties.id, f.properties]));
+  const a = (current.alerts || []).filter((x) => inView(props.get(x.segment)));
+  $("list-hint").innerHTML = `${t("hint_alerts")} <a href="feed.xml" target="_blank" rel="noopener">${t("feed_link")}</a>`;
+  if (!a.length) { list.innerHTML = `<li class="hint">${t("none_alerts")}</li>`; return; }
+  list.innerHTML = "";
+  a.slice(0, 20).forEach((x) => {
+    const p = props.get(x.segment), li = document.createElement("li");
+    const color = x.type === "cleanup" ? css("--water") : binColor(x.to_pct);
+    li.innerHTML = `<button type="button"><span class="rank">${new Date(x.date + "T00:00:00").toLocaleDateString(locale(), { day: "numeric", month: "short" })}</span>
+      <span class="hs-name">${segName(p)}<small>${t(`alert_${x.type}`, { a: nf(current.outlook?.alert_pct ?? 30, 0) })} · ${segAreaLabel(p)}</small></span>
+      <span class="hs-val">${nf(x.from_pct)}% → ${nf(x.to_pct)}%</span>
+      <span class="hs-bar"><span style="width:${Math.min(100, x.to_pct)}%;background:${color}"></span></span></button>`;
+    li.querySelector("button").addEventListener("click", () => selectSegment(p.id, true));
+    list.appendChild(li);
+  });
+}
+
+// Stretches whose open water is redder than the river's middle stretch on nearly every dry day.
+function drawMuddier(list) {
+  $("list-hint").textContent = t("hint_muddier");
+  const rows = current.segments.features.map((f) => f.properties).filter((p) => p.muddier && inView(p))
+    .sort((a, b) => b.dry_muddy.median_diff - a.dry_muddy.median_diff);
+  if (!rows.length) { list.innerHTML = `<li class="hint">${t("none_muddier")}</li>`; return; }
+  list.innerHTML = "";
+  rows.forEach((p, i) => {
+    const m = p.dry_muddy, li = document.createElement("li");
+    li.innerHTML = `<button type="button"><span class="rank">${nf(i + 1, 0)}</span>
+      <span class="hs-name">${segName(p)}<small>${segAreaLabel(p)} ${confBadge(p)}</small></span>
+      <span class="hs-val">${t("muddier_val", { p: nf(m.share_above * 100, 0), n: nf(m.n, 0) })}</span>
+      <span class="hs-bar"><span style="width:${Math.min(100, m.median_diff * 1000)}%;background:${css("--ramp-3")}"></span></span></button>`;
     li.querySelector("button").addEventListener("click", () => selectSegment(p.id, true));
     list.appendChild(li);
   });
@@ -332,6 +371,8 @@ function drawDetail() {
     p.green_channel_ha ? fact(t("f_green_channel"), t("ha_val", { ha: nf(p.green_channel_ha) })) : "",
     floodFact(p),
     cleanupFact(p),
+    p.dry_muddy ? fact(t("f_dry_muddy"), t("dry_muddy_val", { p: nf(p.dry_muddy.share_above * 100, 0), n: nf(p.dry_muddy.n, 0) }) +
+      (p.muddier ? `<span class="conf-why">${t("muddier_flag")}</span>` : "")) : "",
   ].join("");
   // Photo: the slider's date if this stretch was clear then, else its last clear date.
   const sd = current.segment_history.dates[idx], d = valueAt(p.id) != null ? sd : p.date, scene = sceneOn(d);
@@ -596,18 +637,34 @@ function drawTable() {
 
 // ---------- cross-checks by other satellites ----------
 function drawChecks() {
-  const lc = current.landsat_check, rad = current.radar;
+  const lc = current.landsat_check, rad = current.radar, syn = current.synthetic_test, rc = current.muddy_rain_check;
   // Below 65% the other satellite is not much better than a coin toss at telling up from down.
   const dir = (d) => (!d ? "–" : t("x_dir_val", { p: nf(d.share * 100, 0), n: nf(d.changes, 0) }) +
     (d.share < 0.65 ? ` <span class="weak">${t("x_weak")}</span>` : ""));
-  const rows = [];
-  if (lc) rows.push([t("x_landsat"), nf(lc.pairs, 0), dir(lc.direction),
-    t("x_diff_ls", { d: nf(lc.river_mae_pts), b: nf(lc.river_bias_pts) }), lc.checked ? fmtDate(lc.checked) : "–"]);
-  if (rad) rows.push([t("x_radar"), nf(rad.pairs, 0), dir(rad.direction), t("x_diff", { d: nf(rad.mae_pct) }), t("x_every_run")]);
-  const heads = ["x_pairs", "x_dir", "x_diffh", "x_checked"].map((k) => t(k));
-  $("checks").hidden = !rows.length;
-  $("checks").querySelector(".check-cards").innerHTML = rows.map(([name, ...vals]) => `<div class="check-card"><h3>${name}</h3>
-    <dl>${vals.map((v, i) => `<dt>${heads[i]}</dt><dd>${v}</dd>`).join("")}</dl></div>`).join("");
+  const pct = (v) => `${nf(v * 100, 0)}%`;
+  const cards = []; // [title, [[label, value], ...]]
+  if (lc) cards.push([t("x_landsat"), [[t("x_pairs"), nf(lc.pairs, 0)], [t("x_dir"), dir(lc.direction)],
+    [t("x_diffh"), t("x_diff_ls", { d: nf(lc.river_mae_pts), b: nf(lc.river_bias_pts) })],
+    [t("x_checked"), lc.checked ? fmtDate(lc.checked) : "–"]]]);
+  if (rad) cards.push([t("x_radar"), [[t("x_pairs"), nf(rad.pairs, 0)], [t("x_dir"), dir(rad.direction)],
+    [t("x_diffh"), t("x_diff", { d: nf(rad.mae_pct) })], [t("x_checked"), t("x_every_run")]]]);
+  if (syn) {
+    const big = syn.by_size.filter((r) => r.m2 >= syn.big_m2), small = syn.by_size.at(0);
+    const seen = Math.min(...syn.by_size.map((r) => r.seen_share));
+    cards.push([t("x_synthetic"), [
+      [t("x_syn_big", { m2: nf(syn.big_m2, 0) }), big.map((r) => t("x_syn_area", { m2: nf(r.m2, 0), p: pct(r.found_share) })).join("<br>")],
+      [t("x_syn_small", { m2: nf(small.m2, 0) }), `${t("x_syn_counted", { p: pct(small.found_share) })} <span class="weak">${t("x_syn_over")}</span>`],
+      [t("x_syn_seen"), pct(seen)]]]);
+  }
+  if (lc?.ndti_pairs || rc) cards.push([t("x_muddy"), [
+    ...(lc?.ndti_pairs ? [[t("x_muddy_landsat"), t("x_corr", { r: nf(lc.ndti_correlation, 2), n: nf(lc.ndti_pairs, 0) }) +
+      (lc.ndti_correlation < 0.5 ? ` <span class="weak">${t("x_weak_corr")}</span>` : "")],
+      [t("x_dir"), dir(lc.ndti_direction)]] : []),
+    ...(rc ? [[t("x_muddy_rain"), rc.enough ? t("x_rain_val", { p: pct(rc.share_muddier), n: nf(rc.wet_images, 0) })
+      : `${t("x_rain_few", { n: nf(rc.wet_images, 0) })} <span class="weak">${t("x_no_verdict")}</span>`]] : [])]]);
+  $("checks").hidden = !cards.length;
+  $("checks").querySelector(".check-cards").innerHTML = cards.map(([name, facts]) => `<div class="check-card"><h3>${name}</h3>
+    <dl>${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>`).join("");
 }
 
 function drawAbout() {

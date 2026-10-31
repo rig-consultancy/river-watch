@@ -794,8 +794,95 @@ def landsat_check(river_id):
         return None
     v = json.loads(path.read_text())
     rows = [(p["date"], p["sentinel2_pct"], p["landsat_pct"]) for p in v["pairs"]]
+    # Muddiness (mean NDTI of open water) in hundredths, so a change of 0.02 counts.
+    mud = [(p["date"], p["sentinel2_ndti"] * 100, p["landsat_ndti"] * 100) for p in v["pairs"] if "landsat_ndti" in p]
     return {**v["summary"], "checked": v.get("checked"), "direction": direction_agreement(rows),
+            "ndti_direction": direction_agreement(mud, min_change=2) if mud else None,
             "series": [{"date": d, "sentinel2_pct": a, "landsat_pct": b} for d, a, b in rows]}
+
+
+def dry_days(dates, rain, cfg):
+    """Dates with under dry_mm of rain over the dry_days before (and on) the image date."""
+    def total(d):
+        t = date.fromisoformat(d)
+        return sum(rain.get((t - timedelta(days=k)).isoformat(), 0) for k in range(cfg["dry_days"]))
+    return {d for d in dates if rain and total(d) < cfg["dry_mm"]}
+
+
+def muddier_stretches(dates, history, dry, cfg):
+    """Per segment, how it compares in dry weather with the river's other stretches on the same day.
+
+    Uses each stretch's mean NDTI of open water (a continuous muddiness measure: redder = muddier)
+    minus the river's median stretch that day, on dry-weather images only, so rain run-off is not
+    the cause. Returns {segment: {"n", "share_above", "median_diff"}} for segments with enough
+    readings; a stretch above the river on nearly every dry day may sit below a drain or outlet,
+    or have a shallow muddy bed.
+    """
+    rel = defaultdict(list)
+    for d in dates:
+        if d not in dry:
+            continue
+        segs = history["dates"][d]["segments"]
+        vals = [v[1] for v in segs if v is not None and v[1] is not None]
+        if len(vals) < 10:
+            continue
+        med = float(np.median(vals))
+        for k, v in enumerate(segs):
+            if v is not None and v[1] is not None and len(v) > 5 and v[5] >= cfg["min_water_px"]:
+                rel[k].append(v[1] - med)
+    return {k: {"n": len(r), "share_above": round(float(np.mean(np.array(r) > 0)), 3),
+                "median_diff": round(float(np.median(r)), 3)}
+            for k, r in rel.items() if len(r) >= cfg["min_readings"]}
+
+
+def muddy_rain_check(dates, history, rain, dry, cfg):
+    """Does the river look muddier right after rain? Compares the river's mean NDTI on each image
+    taken after wet_mm or more of rain in 3 days with dry-weather images within 30 days of it.
+    Physics says it should rise; with fewer than min_wet such images there is no verdict."""
+    ndti = {d: history["dates"][d].get("mean_ndti") for d in dates}
+    def rain3(d):
+        t = date.fromisoformat(d)
+        return sum(rain.get((t - timedelta(days=k)).isoformat(), 0) for k in range(3))
+    diffs = []
+    for d in dates:
+        if ndti[d] is None or not rain or rain3(d) < cfg["wet_mm"]:
+            continue
+        t = date.fromisoformat(d)
+        near = [ndti[x] for x in dry if ndti[x] is not None and abs((date.fromisoformat(x) - t).days) <= 30]
+        if len(near) >= 2:
+            diffs.append(ndti[d] - float(np.median(near)))
+    return {"wet_images": len(diffs), "enough": len(diffs) >= cfg["min_wet"],
+            "share_muddier": round(float(np.mean(np.array(diffs) > 0)), 2) if diffs else None,
+            "median_change": round(float(np.median(diffs)), 3) if diffs else None}
+
+
+def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct):
+    """Recent changes worth telling someone about, newest first.
+
+    "above": a stretch crossed alert_pct from below; "spread": it rose by spread_pts or more within
+    3 weeks; "cleanup": a probable clean-up (see cleanup_events). Low-confidence stretches and a
+    latest reading that jumped and is not yet confirmed by another image are left out.
+    """
+    t = np.array([date.fromisoformat(d).toordinal() for d in dates])
+    since = t[-1] - cfg["days"]
+    out = []
+    for k in range(hy.shape[1]):
+        if conf.get(k, ("low",))[0] == "low":
+            continue
+        seen = np.nonzero(np.isfinite(hy[:, k]))[0]
+        for a, b in zip(seen, seen[1:]):
+            if t[b] < since or t[b] - t[a] > 21 or (b == len(dates) - 1 and unconfirmed[k]):
+                continue
+            before, after = hy[a, k], hy[b, k]
+            kind = ("above" if before < alert_pct <= after
+                    else "spread" if after - before >= cfg["spread_pts"] else None)
+            if kind:
+                out.append({"date": dates[b], "type": kind, "segment": int(k), "from_date": dates[a],
+                            "from_pct": round(float(before), 1), "to_pct": round(float(after), 1)})
+    out += [{"date": e["to"], "type": "cleanup", "segment": e["segment"], "from_date": e["from"],
+             "from_pct": e["before"], "to_pct": e["after"]}
+            for e in events if e["cause"] == "removal" and date.fromisoformat(e["to"]).toordinal() >= since]
+    return sorted(out, key=lambda a: (a["date"], a["segment"], a["type"]), reverse=True)
 
 
 def write_web(river, cfg, segments, history, area):
@@ -852,6 +939,12 @@ def write_web(river, cfg, segments, history, area):
     events = cleanup_events(dates, hy, {k: seg_sigma[c][0] for k, (c, _) in conf.items()}, rain,
                             cfg["cleanup"]) if cfg.get("cleanup") else []
 
+    mud_cfg = cfg.get("muddy")
+    dry = dry_days(dates, rain, mud_cfg) if mud_cfg else set()
+    muddier = muddier_stretches(dates, history, dry, mud_cfg) if mud_cfg else {}
+    alert_list = alerts(dates, hy, unconfirmed, conf, events, cfg["alerts"], cfg["outlook"]["alert_pct"]) \
+        if cfg.get("alerts") else []
+
     def likely(lo_val, hi_val, sigma):
         pad = z80 * (sigma or 0)
         return [round(max(0.0, lo_val - pad), 1), round(min(100.0, hi_val + pad), 1)]
@@ -893,6 +986,10 @@ def write_web(river, cfg, segments, history, area):
                 "change_pct": None if prev is None else round(float(h - prev), 1),
                 "outlook": seg_look[i],
                 "confidence": c, "confidence_why": why,
+                # Dry weather: share of days muddier than the river's middle stretch, and by how much.
+                "dry_muddy": muddier.get(i),
+                "muddier": bool(i in muddier and c != "low" and muddier[i]["share_above"] >= mud_cfg["min_share"]
+                                and muddier[i]["median_diff"] >= mud_cfg["min_diff"]),
             },
         })
 
@@ -948,6 +1045,13 @@ def write_web(river, cfg, segments, history, area):
         "regions": region_out,
         # Sharp, lasting drops per stretch with their likely cause (see cleanup_events).
         "cleanup_events": events,
+        # Recent changes worth telling someone about; also published as web/feed.xml.
+        "alerts": alert_list,
+        # Does muddiness rise after rain, as it physically should? (see muddy_rain_check)
+        "muddy_rain_check": muddy_rain_check(dates, history, rain, dry, mud_cfg) if mud_cfg else None,
+        # Planted-weed test (see synthetic_test.py).
+        "synthetic_test": (json.loads((ROOT / f"data/validation/{river['id']}-synthetic.json").read_text())
+                           if (ROOT / f"data/validation/{river['id']}-synthetic.json").exists() else None),
         # Images left out of every figure, and why (shown in the data table).
         "rejected_dates": [{"date": d, "reason": rejected[d], "aot": history["dates"][d].get("aot"),
                             "cloud_share": history["dates"][d].get("cloud_share"),
@@ -1006,6 +1110,70 @@ def write_web(river, cfg, segments, history, area):
     print(f"  wrote web/data/{river['id']}.json ({len(features)} segments, {len(dates)} dates)")
 
 
+SITE = "https://rig-consultancy.github.io/river-watch/"
+ALERT_WORDS = {
+    "above": ("weed above {a}% ({from_pct}% → {to_pct}%)", "जलपर्णी {a}% पेक्षा जास्त ({from_pct}% → {to_pct}%)"),
+    "spread": ("weed spread ({from_pct}% → {to_pct}%)", "जलपर्णी वाढली ({from_pct}% → {to_pct}%)"),
+    "cleanup": ("probable clean-up ({from_pct}% → {to_pct}%)", "संभाव्य स्वच्छता ({from_pct}% → {to_pct}%)"),
+}
+
+
+def stretch_name(p, lang="en"):
+    """A stretch as the dashboard names it: its place, else the distance from the nearest one."""
+    place = p.get("place_mr") if lang == "mr" and p.get("place_mr") else p.get("place")
+    if place:
+        return f"{place} जवळ" if lang == "mr" else f"Near {place}"
+    n = p.get("nearest")
+    if n:
+        name = n.get("name_mr") if lang == "mr" and n.get("name_mr") else n["name"]
+        return f"{name} पासून {n['km']} किमी" if lang == "mr" else f"{n['km']} km from {name}"
+    return f"भाग {p['id'] + 1}" if lang == "mr" else f"Stretch {p['id'] + 1}"
+
+
+def write_feed(cfg):
+    """web/feed.xml: every river's alerts as one Atom feed, for feed readers and feed-to-email
+    services. Built only from the published data, so it changes only when an alert does."""
+    from xml.sax.saxutils import escape
+    entries = []
+    for river in cfg["rivers"]:
+        path = ROOT / f"web/data/{river['id']}.json"
+        if river.get("draft") or not path.exists():
+            continue
+        d = json.loads(path.read_text())
+        props = {f["properties"]["id"]: f["properties"] for f in d["segments"]["features"]}
+        a_pct = (d.get("outlook") or {}).get("alert_pct", cfg["outlook"]["alert_pct"])
+        for al in d.get("alerts", []):
+            p = props[al["segment"]]
+            en, mr = (w.format(a=a_pct, **al) for w in ALERT_WORDS[al["type"]])
+            link = f"{SITE}?river={river['id']}&stretch={al['segment'] + 1}"
+            entries.append((al["date"], f"""  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/{river['id']}/{al['type']}/{al['segment']}/{al['date']}</id>
+    <title>{escape(f"{river['name']}, {stretch_name(p)}: {en}")}</title>
+    <updated>{al['date']}T00:00:00Z</updated>
+    <link href="{escape(link)}"/>
+    <summary>{escape(f"{en} ({al['from_date']} to {al['date']}). {river.get('name_mr', '')}, {stretch_name(p, 'mr')}: {mr}.")}</summary>
+  </entry>"""))
+    entries.sort(key=lambda e: e[0], reverse=True)
+    entries = entries[:100]
+    updated = entries[0][0] if entries else "2026-01-01"
+    text = f"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:rig-consultancy.github.io,2026:river-watch</id>
+  <title>River Watch alerts</title>
+  <subtitle>Weed above the alert level, sudden spread and probable clean-ups on Pune's rivers, from Sentinel-2</subtitle>
+  <link href="{SITE}"/>
+  <link rel="self" href="{SITE}feed.xml"/>
+  <updated>{updated}T00:00:00Z</updated>
+  <author><name>River Watch</name></author>
+{chr(10).join(e for _, e in entries)}
+</feed>
+"""
+    out = ROOT / "web/feed.xml"
+    if not out.exists() or out.read_text() != text:
+        out.write_text(text)
+        print(f"wrote web/feed.xml ({len(entries)} alerts)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", type=date.fromisoformat, help="backfill from this date")
@@ -1019,6 +1187,7 @@ def main():
             continue  # being set up; only runs when named
         print(f"{river['name']}")
         run_river(river, cfg, args.since)
+    write_feed(cfg)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:rig-consultancy.github.io,2026:river-watch</id>
+  <title>River Watch alerts</title>
+  <subtitle>Weed above the alert level, sudden spread and probable clean-ups on Pune's rivers, from Sentinel-2</subtitle>
+  <link href="https://rig-consultancy.github.io/river-watch/"/>
+  <link rel="self" href="https://rig-consultancy.github.io/river-watch/feed.xml"/>
+  <updated>2026-10-25T00:00:00Z</updated>
+  <author><name>River Watch</name></author>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/33/2026-10-25</id>
+    <title>Mula-Mutha (Pune), Near Khadki: weed above 30% (3.2% → 30.6%)</title>
+    <updated>2026-10-25T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=34"/>
+    <summary>weed above 30% (3.2% → 30.6%) (2026-10-20 to 2026-10-25). मुळा-मुठा (पुणे), खडकी जवळ: जलपर्णी 30% पेक्षा जास्त (3.2% → 30.6%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/indrayani-pcmc/spread/35/2026-10-20</id>
+    <title>Indrayani (Dehu-Alandi), 4.7 km from More Wasti: weed spread (5.4% → 20.6%)</title>
+    <updated>2026-10-20T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=indrayani-pcmc&amp;stretch=36"/>
+    <summary>weed spread (5.4% → 20.6%) (2026-10-15 to 2026-10-20). इंद्रायणी (देहू-आळंदी), मोरे वसती पासून 4.7 किमी: जलपर्णी वाढली (5.4% → 20.6%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/26/2026-10-10</id>
+    <title>Mula-Mutha (Pune), Near Aundh: weed above 30% (11.7% → 41.0%)</title>
+    <updated>2026-10-10T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=27"/>
+    <summary>weed above 30% (11.7% → 41.0%) (2026-10-05 to 2026-10-10). मुळा-मुठा (पुणे), औंध जवळ: जलपर्णी 30% पेक्षा जास्त (11.7% → 41.0%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/spread/18/2026-10-10</id>
+    <title>Mula-Mutha (Pune), Near Sharda Colony: weed spread (3.4% → 20.7%)</title>
+    <updated>2026-10-10T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=19"/>
+    <summary>weed spread (3.4% → 20.7%) (2026-10-05 to 2026-10-10). मुळा-मुठा (पुणे), शारदा कॉलनी जवळ: जलपर्णी वाढली (3.4% → 20.7%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/indrayani-pcmc/cleanup/37/2026-10-10</id>
+    <title>Indrayani (Dehu-Alandi), 5.6 km from Alandi: probable clean-up (42.9% → 17.1%)</title>
+    <updated>2026-10-10T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=indrayani-pcmc&amp;stretch=38"/>
+    <summary>probable clean-up (42.9% → 17.1%) (2026-10-05 to 2026-10-10). इंद्रायणी (देहू-आळंदी), आळंदी पासून 5.6 किमी: संभाव्य स्वच्छता (42.9% → 17.1%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/pawana-pcmc/above/28/2026-10-05</id>
+    <title>Pawana (Pimpri-Chinchwad), Near Punawale: weed above 30% (17.6% → 31.8%)</title>
+    <updated>2026-10-05T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=pawana-pcmc&amp;stretch=29"/>
+    <summary>weed above 30% (17.6% → 31.8%) (2026-10-02 to 2026-10-05). पवना (पिंपरी-चिंचवड), पुनावळे जवळ: जलपर्णी 30% पेक्षा जास्त (17.6% → 31.8%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/pawana-pcmc/spread/27/2026-10-05</id>
+    <title>Pawana (Pimpri-Chinchwad), Near Punawale: weed spread (39.8% → 73.7%)</title>
+    <updated>2026-10-05T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=pawana-pcmc&amp;stretch=28"/>
+    <summary>weed spread (39.8% → 73.7%) (2026-10-02 to 2026-10-05). पवना (पिंपरी-चिंचवड), पुनावळे जवळ: जलपर्णी वाढली (39.8% → 73.7%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/indrayani-pcmc/above/37/2026-10-05</id>
+    <title>Indrayani (Dehu-Alandi), 5.6 km from Alandi: weed above 30% (1.7% → 42.9%)</title>
+    <updated>2026-10-05T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=indrayani-pcmc&amp;stretch=38"/>
+    <summary>weed above 30% (1.7% → 42.9%) (2026-10-02 to 2026-10-05). इंद्रायणी (देहू-आळंदी), आळंदी पासून 5.6 किमी: जलपर्णी 30% पेक्षा जास्त (1.7% → 42.9%).</summary>
+  </entry>
+</feed>

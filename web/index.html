@@ -60,6 +60,8 @@
         <div class="seg" role="tablist" aria-label="Stretch list">
           <button type="button" data-list="worst" class="on" data-i18n="tab_worst">Worst now</button>
           <button type="button" data-list="risk" data-i18n="tab_risk">At risk in 2 weeks</button>
+          <button type="button" data-list="alerts" data-i18n="tab_alerts">Alerts</button>
+          <button type="button" data-list="muddy" data-i18n="tab_muddy">Muddier</button>
         </div>
       </div>
       <p class="hint" id="list-hint" data-i18n="hint_list">Each stretch is about 500 m of river. Select one for details.</p>
@@ -106,10 +108,10 @@
   </section>
 
   <section class="panel checks-panel" id="checks" hidden>
-    <h2 data-i18n="x_title">Cross-checked by other satellites</h2>
-    <p class="muted" data-i18n="x_intro">Two independent satellites measure the same river. They confirm whether weed is rising or falling; neither is sharp enough to confirm exact levels.</p>
+    <h2 data-i18n="x_title">How the figures are checked</h2>
+    <p class="muted" data-i18n="x_intro">Independent satellites and a planted-weed test show how far the figures can be trusted. They confirm whether weed is rising or falling; none is sharp enough to confirm exact levels.</p>
     <div class="check-cards"></div>
-    <p class="muted hint" data-i18n="x_note">Same direction: whenever Sentinel-2 showed a change of 5 points or more between two compared days, how often the other satellite moved the same way. Landsat is re-checked on the 1st of every month; the radar is re-calibrated with every update.</p>
+    <p class="muted hint" data-i18n="x_note">Same direction: whenever Sentinel-2 showed a change of 5 points or more (0.02 for muddiness) between two compared days, how often the other satellite moved the same way. Planted-weed test: mats of known size put into real clear images and measured with the normal rule. Landsat is re-checked on the 1st of every month; the radar with every update.</p>
   </section>
 
   <details class="panel table-panel">

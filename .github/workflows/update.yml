@@ -40,9 +40,11 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
-      - name: Rebuild river area (yearly, after the monsoon)
+      - name: Rebuild river area and repeat the planted-weed test (yearly, after the monsoon)
         if: github.event.schedule == '0 2 15 10 *'
-        run: uv run python pipeline/build_river_mask.py
+        run: |
+          uv run python pipeline/build_river_mask.py
+          uv run python pipeline/synthetic_test.py
 
       - name: Cross-check with Landsat (monthly)
         if: github.event.schedule == '0 3 1 * *'
@@ -87,7 +89,7 @@ jobs:
         run: |
           git config user.name "river-watch-bot"
           git config user.email "river-watch-bot@users.noreply.github.com"
-          git add data/history data/masks data/validation data/roadside web/data
+          git add data/history data/masks data/validation data/roadside web/data web/feed.xml
           git diff --cached --quiet || git commit -m "Data update $(date -u +%F)"
           # A code push can land while this runs; put the data commit on top of it instead of failing.
           git pull --rebase

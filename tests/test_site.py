@@ -30,6 +30,7 @@ DYNAMIC_KEYS = {
     "tt_flood_": ["rooted", "floating", "mixed", "unclear"],
     "rejected_": ["haze", "cloud"],
     "why_": ["small", "edges", "outline", "stale", "green_channel", "narrow", "no_clear_view"],
+    "alert_": ["above", "spread", "cleanup"],
 }
 
 
@@ -77,6 +78,7 @@ def test_dynamic_text_keys_cover_every_value_the_pipeline_writes():
             "conf_": {p["confidence"] for p in feats if p["measurable"]},
             "flood_": {p["flood_test"]["verdict"] for p in feats if p.get("flood_test")},
             "rejected_": {x["reason"] for x in d["rejected_dates"]},
+            "alert_": {a["type"] for a in d["alerts"]},
             "why_": {w for p in feats for w in p.get("confidence_why", [])} | {p["why"] for p in feats if not p["measurable"]},
         }
         for prefix, values in seen.items():
@@ -137,6 +139,16 @@ def test_published_river_data_is_consistent(river):
     for x in (lc["direction"], d["radar"]["direction"]):
         assert x is None or (0 <= x["share"] <= 1 and x["changes"] >= 5)
     assert all(0 <= x["landsat_pct"] <= 100 and 0 <= x["sentinel2_pct"] <= 100 for x in lc["series"])
+
+    for a in d["alerts"]:
+        assert a["from_date"] < a["date"] and a["date"] in dates and 0 <= a["segment"] < n
+        assert d["segments"]["features"][a["segment"]]["properties"]["confidence"] != "low" or a["type"] == "cleanup"
+    syn = d["synthetic_test"]
+    assert syn and all(r["trials"] >= 100 and r["seen_share"] >= 0.9 for r in syn["by_size"])
+    big = [r["found_share"] for r in syn["by_size"] if r["m2"] >= 10000]
+    assert all(0.9 <= v <= 1.2 for v in big), "large planted mats should be measured near their true area"
+    flagged = [f["properties"] for f in d["segments"]["features"] if f["properties"].get("muddier")]
+    assert all(p["confidence"] != "low" and p["dry_muddy"]["n"] >= 30 for p in flagged)
 
     u = d["uncertainty"]
     assert u["river_noise_pts"] > 0 and u["one_off_jumps"] < 0.05 * u["readings"]
@@ -210,3 +222,13 @@ def test_live_site_serves_this_commit():
         assert days_old <= 30 or date.today().month in (7, 8, 9), f"{river}: newest image is {days_old} days old"
         checked = (date.today() - date.fromisoformat(live["landsat_check"]["checked"])).days
         assert checked <= 40, f"{river}: Landsat cross-check last ran {checked} days ago (monthly run failing?)"
+
+
+def test_alert_feed_matches_the_published_alerts():
+    import xml.etree.ElementTree as ET
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    feed = ET.parse(WEB / "feed.xml").getroot()
+    ids = {e.find("a:id", ns).text for e in feed.findall("a:entry", ns)}
+    want = {f"tag:rig-consultancy.github.io,2026:river-watch/{r}/{a['type']}/{a['segment']}/{a['date']}"
+            for r in RIVERS for a in json.loads((WEB / f"data/{r}.json").read_text())["alerts"]}
+    assert ids == set(sorted(want)[-100:]) if len(want) > 100 else ids == want

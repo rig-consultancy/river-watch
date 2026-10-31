@@ -1,0 +1,104 @@
+{
+ "dates": [
+  "2019-12-01",
+  "2024-11-09",
+  "2025-10-20",
+  "2025-12-19",
+  "2026-01-08",
+  "2026-01-28",
+  "2026-03-14",
+  "2026-10-25"
+ ],
+ "mat_ndvi_median": 0.851,
+ "pure_mat_pixels": 1392,
+ "brightness": {
+  "mat": 0.35,
+  "water": 0.1,
+  "tried": [
+   0.5,
+   2.0
+  ]
+ },
+ "big_m2": 1000,
+ "by_size": [
+  {
+   "m2": 100,
+   "trials": 151,
+   "found_share": 2.126,
+   "found_share_range": [
+    1.603,
+    2.563
+   ],
+   "seen_share": 1.0
+  },
+  {
+   "m2": 300,
+   "trials": 149,
+   "found_share": 1.617,
+   "found_share_range": [
+    1.407,
+    1.752
+   ],
+   "seen_share": 0.993
+  },
+  {
+   "m2": 1000,
+   "trials": 151,
+   "found_share": 1.242,
+   "found_share_range": [
+    1.175,
+    1.294
+   ],
+   "seen_share": 1.0
+  },
+  {
+   "m2": 3000,
+   "trials": 151,
+   "found_share": 1.071,
+   "found_share_range": [
+    1.045,
+    1.089
+   ],
+   "seen_share": 1.0
+  },
+  {
+   "m2": 10000,
+   "trials": 147,
+   "found_share": 1.012,
+   "found_share_range": [
+    1.004,
+    1.018
+   ],
+   "seen_share": 1.0
+  }
+ ],
+ "big_by_confidence": {
+  "high": {
+   "trials": 143,
+   "found_share": 1.072,
+   "found_share_range": [
+    1.046,
+    1.093
+   ],
+   "seen_share": 1.0
+  },
+  "medium": {
+   "trials": 82,
+   "found_share": 1.037,
+   "found_share_range": [
+    1.02,
+    1.048
+   ],
+   "seen_share": 1.0
+  },
+  "low": {
+   "trials": 224,
+   "found_share": 1.025,
+   "found_share_range": [
+    1.015,
+    1.031
+   ],
+   "seen_share": 1.0
+  }
+ }
+}
