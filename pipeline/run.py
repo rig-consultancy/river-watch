@@ -471,6 +471,8 @@ def run_river(river, cfg, since: date | None):
         except Exception as e:
             print(f"  radar: skipped this run ({type(e).__name__}: {e})")
 
+    if history["dates"]:
+        update_rainfall(river, min(history["dates"]), max(history["dates"]))
     n = len(segments)
     write_web(river, cfg, segments, history, area={
         "px": np.bincount(seg_idx[keep], minlength=n),
@@ -643,13 +645,30 @@ def flood_verdict(px):
     return {"verdict": verdict, **{f"{k}_ha": round(v * RES * RES / 1e4, 1) for k, v in px.items()}}
 
 
-def rainfall(river, start: str, end: str):
-    """Daily rainfall (mm) at the river's centre from NASA POWER (public domain, no key), or {}.
+def rain_path(river_id: str) -> Path:
+    return ROOT / f"data/rain/{river_id}.json"
 
-    Cached in data/cache/<river>/rain.json; only days not yet cached are requested.
-    """
-    path = ROOT / f"data/cache/{river['id']}/rain.json"
-    rain = json.loads(path.read_text()) if path.exists() else {}
+
+def load_rain(river_id: str) -> dict:
+    """Daily rainfall (mm) stored in data/rain/<river>.json (committed, like every input the
+    published figures depend on, so they can be rebuilt exactly)."""
+    path = rain_path(river_id)
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def rain_total(rain, d, days):
+    """Rain over the `days` days up to and including date d, or None if any of them is unknown
+    (NASA POWER lags a few days): an unknown day must never count as a dry one."""
+    t = date.fromisoformat(d)
+    vals = [rain.get((t - timedelta(days=k)).isoformat()) for k in range(days)]
+    return None if any(v is None for v in vals) else sum(vals)
+
+
+def update_rainfall(river, start: str, end: str):
+    """Add days missing from data/rain/<river>.json from NASA POWER (public domain, no key):
+    daily rainfall at the river's centre. Only days after the last stored one are requested."""
+    path = rain_path(river["id"])
+    rain = load_rain(river["id"])
     have = max(rain) if rain else None
     if have is None or have < end:
         lon = (river["bbox"][0] + river["bbox"][2]) / 2
@@ -668,7 +687,6 @@ def rainfall(river, start: str, end: str):
             path.write_text(json.dumps(rain, separators=(",", ":"), sort_keys=True))
         except Exception as e:  # rainfall only explains drops; without it they are labelled "unknown"
             print(f"  rainfall: unavailable ({type(e).__name__})")
-    return rain
 
 
 def cleanup_events(dates, hy, sigma, rain, cfg):
@@ -703,7 +721,8 @@ def cleanup_events(dates, hy, sigma, rain, cfg):
         a, b = dates.index(e["from"]), dates.index(e["to"])
         had = np.nan_to_num(hy[a:b + 1], nan=-1).max(axis=0) >= cfg["min_before"]
         same = sum(1 for o in drops if o["from"] >= e["from"] and o["to"] <= e["to"])
-        mm = sum(v for d, v in rain.items() if e["from"] < d <= e["to"]) if rain else None
+        days = (date.fromisoformat(e["to"]) - date.fromisoformat(e["from"])).days
+        mm = rain_total(rain, e["to"], days) if rain else None
         e["rain_mm"] = None if mm is None else round(mm, 1)
         e["cause"] = ("rain" if mm is not None and mm >= cfg["rain_mm"]
                       else "river_wide" if had.sum() and same / had.sum() >= cfg["river_wide_share"]
@@ -802,11 +821,10 @@ def landsat_check(river_id):
 
 
 def dry_days(dates, rain, cfg):
-    """Dates with under dry_mm of rain over the dry_days before (and on) the image date."""
-    def total(d):
-        t = date.fromisoformat(d)
-        return sum(rain.get((t - timedelta(days=k)).isoformat(), 0) for k in range(cfg["dry_days"]))
-    return {d for d in dates if rain and total(d) < cfg["dry_mm"]}
+    """Dates with under dry_mm of rain over the dry_days before (and on) the image date; a date
+    whose rainfall is not known yet is not dry."""
+    totals = {d: rain_total(rain, d, cfg["dry_days"]) for d in dates}
+    return {d for d, v in totals.items() if v is not None and v < cfg["dry_mm"]}
 
 
 def muddier_stretches(dates, history, dry, cfg):
@@ -840,12 +858,10 @@ def muddy_rain_check(dates, history, rain, dry, cfg):
     taken after wet_mm or more of rain in 3 days with dry-weather images within 30 days of it.
     Physics says it should rise; with fewer than min_wet such images there is no verdict."""
     ndti = {d: history["dates"][d].get("mean_ndti") for d in dates}
-    def rain3(d):
-        t = date.fromisoformat(d)
-        return sum(rain.get((t - timedelta(days=k)).isoformat(), 0) for k in range(3))
     diffs = []
     for d in dates:
-        if ndti[d] is None or not rain or rain3(d) < cfg["wet_mm"]:
+        wet = rain_total(rain, d, 3)
+        if ndti[d] is None or wet is None or wet < cfg["wet_mm"]:
             continue
         t = date.fromisoformat(d)
         near = [ndti[x] for x in dry if ndti[x] is not None and abs((date.fromisoformat(x) - t).days) <= 30]
@@ -935,7 +951,7 @@ def write_web(river, cfg, segments, history, area):
         cols = [k for k, (c, _) in conf.items() if c == level]
         seg_sigma[level] = repeat_noise(dates, list(hy[:, cols])) if cols else (None, 0)
 
-    rain = rainfall(river, dates[0], dates[-1]) if cfg.get("cleanup") else {}
+    rain = load_rain(river["id"])
     events = cleanup_events(dates, hy, {k: seg_sigma[c][0] for k, (c, _) in conf.items()}, rain,
                             cfg["cleanup"]) if cfg.get("cleanup") else []
 

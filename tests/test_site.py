@@ -160,8 +160,6 @@ def test_published_river_data_is_consistent(river):
 def test_published_data_is_what_the_code_makes_from_the_committed_history(river, tmp_path, monkeypatch):
     """Regenerate the dashboard file from data/history with the current code; it must match the
     published one exactly (apart from the timestamp). Catches stale data and non-determinism."""
-    if not (ROOT / f"data/cache/{river}/rain.json").exists():
-        pytest.skip("rainfall cache not present (it is filled by the first pipeline run)")
     sys.path.insert(0, str(ROOT / "pipeline"))
     import numpy as np
     import rasterio
@@ -218,8 +216,10 @@ def test_live_site_serves_this_commit():
         live = requests.get(base + f"data/{river}.json", timeout=60).json()
         local = json.loads((WEB / f"data/{river}.json").read_text())
         assert live["latest_date"] == local["latest_date"] and live["series"] == local["series"], river
+        # Outside the monsoon a clear image arrives every few days; 12 days without one means the
+        # scheduled update has stopped.
         days_old = (date.today() - date.fromisoformat(live["latest_date"])).days
-        assert days_old <= 30 or date.today().month in (7, 8, 9), f"{river}: newest image is {days_old} days old"
+        assert days_old <= 12 or date.today().month in (6, 7, 8, 9), f"{river}: newest image is {days_old} days old"
         checked = (date.today() - date.fromisoformat(live["landsat_check"]["checked"])).days
         assert checked <= 40, f"{river}: Landsat cross-check last ran {checked} days ago (monthly run failing?)"
 

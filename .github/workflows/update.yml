@@ -89,7 +89,7 @@ jobs:
         run: |
           git config user.name "river-watch-bot"
           git config user.email "river-watch-bot@users.noreply.github.com"
-          git add data/history data/masks data/validation data/roadside web/data web/feed.xml
+          git add data/history data/masks data/rain data/validation data/roadside web/data web/feed.xml
           git diff --cached --quiet || git commit -m "Data update $(date -u +%F)"
           # A code push can land while this runs; put the data commit on top of it instead of failing.
           git pull --rebase
@@ -113,6 +113,9 @@ jobs:
   # this commit's, and the newest image recent. Retries while GitHub Pages' cache catches up.
   verify:
     needs: deploy
+    # Also when the update or deploy failed: then the live site is checked as it stands, and a
+    # site that has stopped updating fails here within days instead of going unnoticed.
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
