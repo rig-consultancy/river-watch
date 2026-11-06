@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # no moving v10 tag is published
 
       # Per-pixel values of past images, so rebuilds don't download everything again.
       - uses: actions/cache@v6
@@ -132,7 +132,7 @@ jobs:
         with:
           ref: main   # includes the data commit this run may have just pushed
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # no moving v10 tag is published
 
       - name: Check the live site
         env:
