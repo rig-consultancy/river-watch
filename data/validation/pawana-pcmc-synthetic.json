@@ -1,16 +1,21 @@
 {
  "dates": [
-  "2019-12-01",
-  "2024-11-09",
-  "2025-10-20",
-  "2025-12-19",
-  "2026-01-08",
-  "2026-01-28",
-  "2026-03-14",
+  "2018-01-10",
+  "2020-01-20",
+  "2024-11-14",
+  "2025-02-07",
+  "2025-12-14",
+  "2026-01-18",
+  "2026-02-17",
   "2026-10-25"
  ],
- "mat_ndvi_median": 0.851,
- "pure_mat_pixels": 1392,
+ "mat_ndvi_percentiles": {
+  "10": 0.752,
+  "30": 0.834,
+  "50": 0.856
+ },
+ "mat_ndvi": 0.79,
+ "pure_mat_pixels": 2760,
  "brightness": {
   "mat": 0.35,
   "water": 0.1,
@@ -23,82 +28,90 @@
  "by_size": [
   {
    "m2": 100,
-   "trials": 151,
-   "found_share": 2.126,
+   "trials": 152,
+   "found_share": 1.142,
    "found_share_range": [
-    1.603,
-    2.563
+    0.785,
+    1.55
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 2.092
   },
   {
    "m2": 300,
-   "trials": 149,
-   "found_share": 1.617,
+   "trials": 152,
+   "found_share": 1.072,
    "found_share_range": [
-    1.407,
-    1.752
+    0.868,
+    1.276
    ],
-   "seen_share": 0.993
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.59
   },
   {
    "m2": 1000,
-   "trials": 151,
-   "found_share": 1.242,
+   "trials": 152,
+   "found_share": 1.004,
    "found_share_range": [
-    1.175,
-    1.294
+    0.918,
+    1.086
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.218
   },
   {
    "m2": 3000,
-   "trials": 151,
-   "found_share": 1.071,
+   "trials": 152,
+   "found_share": 0.968,
    "found_share_range": [
-    1.045,
-    1.089
+    0.94,
+    0.995
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.063
   },
   {
    "m2": 10000,
-   "trials": 147,
-   "found_share": 1.012,
+   "trials": 152,
+   "found_share": 0.955,
    "found_share_range": [
-    1.004,
-    1.018
+    0.946,
+    0.962
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.01
   }
  ],
  "big_by_confidence": {
   "high": {
-   "trials": 143,
-   "found_share": 1.072,
+   "trials": 137,
+   "found_share": 0.959,
    "found_share_range": [
-    1.046,
-    1.093
+    0.931,
+    0.986
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.05
   },
   "medium": {
-   "trials": 82,
-   "found_share": 1.037,
+   "trials": 85,
+   "found_share": 0.965,
    "found_share_range": [
-    1.02,
-    1.048
+    0.945,
+    0.985
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.047
   },
   "low": {
-   "trials": 224,
-   "found_share": 1.025,
+   "trials": 234,
+   "found_share": 0.961,
    "found_share_range": [
-    1.015,
-    1.031
+    0.949,
+    0.972
    ],
-   "seen_share": 1.0
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.025
   }
  }
 }

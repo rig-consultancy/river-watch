@@ -33,7 +33,7 @@ import yaml
 from rasterio.features import rasterize, shapes
 from shapely.geometry import Polygon, shape
 
-from run import (ROOT, UTM, classify, day_pixels, load_river, make_grid, reject_dates, river_mask_path,
+from run import (ROOT, UTM, classify, day_pixels, prefetch, load_river, make_grid, reject_dates, river_mask_path,
                  search)
 
 SURVIVED, CLEARED, UNCLEAR = 2, 3, 4
@@ -60,6 +60,9 @@ def build(river, full_cfg):
     since = (date.fromisoformat(max(hist["dates"])) - timedelta(days=365 * cfg["mask_years"])).isoformat()
     dates = [d for d in sorted(hist["dates"]) if d not in rejected and d > since]
     days = search(river, date.fromisoformat(dates[0]), date.fromisoformat(dates[-1]), det)
+    missing = {d: days[d] for d in dates if d in days and not (ROOT / f"data/cache/{river['id']}/{d}.npz").exists()}
+    if missing:  # GitHub's cache may lack them: download 4 at a time first
+        prefetch(river["id"], missing, tf, w, h, mask)
 
     n = int(mask.sum())
     seen, wet, green = np.zeros(n, "uint16"), np.zeros(n, "uint16"), np.zeros(n, "uint16")

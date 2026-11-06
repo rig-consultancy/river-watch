@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 import run  # noqa: E402
 
 DET = {"hyacinth_ndvi": 0.3, "water_ndwi": 0.0, "turbid_ndti": 0.05, "min_valid_fraction": 0.6,
-       "range_ndvi_delta": 0.05}
+       "mat_ndvi": 0.8, "mat_brightness": 0.35, "water_brightness": 0.10, "brightness_range": [0.5, 2.0],
+       "subpixel_floor": 0.1, "water_ndvi_default": 0.02}
 QUALITY = {"max_aot": 0.8, "cloud_share": 0.1, "max_z": 3, "spike_pts": 15}
 
 
@@ -32,27 +33,36 @@ def test_classify_separates_weed_water_and_unusable():
     assert water.tolist() == [False, True, False, False]
 
 
-def test_process_day_counts_per_segment_and_ranges():
-    # Segment 0: 4 pixels, 2 clearly weed, 1 borderline (NDVI 0.27), 1 water. Segment 1: 4 water.
-    px = pixels([0.6, 0.5, 0.27, -0.2] + [-0.3] * 4,
-                [-0.4, -0.4, -0.2, 0.3] + [0.3] * 4,
-                [0.0, 0.0, 0.0, 0.1] + [-0.1] * 4)
-    keep = np.ones(8, bool)
-    seg_idx = np.array([0] * 4 + [1] * 4)
-    # Small segments: lower the "too cloudy" floor of 5 pixels by giving each segment 6 pixels.
-    px = {k: np.concatenate([v, v[:2], v[4:6]]) for k, v in px.items()}
-    keep = np.ones(12, bool)
-    seg_idx = np.array([0] * 4 + [1] * 4 + [0, 0, 1, 1])
-    res = run.process_day(px, keep, seg_idx, 2, DET)
-    hy0, _, strict0, loose0, muddy0, water0 = res["segments"][0]
-    assert water0 == 1 and muddy0 is None              # too little open water to judge muddiness
-    assert res["segments"][1][4:] == [0.0, 6]          # 6 clear-water pixels, none muddy
-    assert hy0 == pytest.approx(4 / 6, abs=1e-3)       # 0.6, 0.5 and their copies
-    assert strict0 == pytest.approx(4 / 6, abs=1e-3)   # NDVI > 0.35: same
-    assert loose0 == pytest.approx(5 / 6, abs=1e-3)    # NDVI > 0.25 adds the borderline pixel
-    assert res["segments"][1][0] == 0
-    assert res["hyacinth_pct"] == pytest.approx(4 / 12 * 100, abs=0.01)
+def test_cover_fraction_inverts_the_mixing():
+    import synthetic_test as st
+    f = np.array([0.0, 0.05, 0.25, 0.5, 0.9, 1.0])
+    nd = st.mixed_ndvi(f, 0.8, 0.0, 0.35, 0.10)  # pixels part-covered by a mat of NDVI 0.8 on water at 0
+    got = run.cover_fraction(nd, 0.0, DET)
+    assert got.tolist() == pytest.approx([0.0, 0.0, 0.25, 0.5, 0.9, 1.0], abs=1e-6)  # 5% is under the floor
+    assert run.cover_fraction(np.array([0.95, -0.3, np.nan]), 0.0, DET)[:2].tolist() == [1.0, 0.0]
+    assert np.isnan(run.cover_fraction(np.array([np.nan]), 0.0, DET)[0])
+
+
+def test_process_day_counts_cover_per_segment_and_ranges():
+    import synthetic_test as st
+    half = float(st.mixed_ndvi(0.5, 0.8, 0.0, 0.35, 0.10))  # a pixel half covered
+    # Segment 0: a full mat pixel, a half-covered one, 4 water pixels. Segment 1: 6 water pixels.
+    ndvi = [0.85, half, 0.0, 0.0, 0.0, 0.0] + [0.0] * 6
+    ndwi = [-0.4, -0.1, 0.3, 0.3, 0.3, 0.3] + [0.3] * 6
+    ndti = [0.0, 0.0, 0.1, 0.0, 0.0, 0.0] + [-0.1] * 6
+    px = pixels(ndvi, ndwi, ndti)
+    # Under 50 open-water pixels: the day's water NDVI is the configured default (0 here).
+    res = run.process_day(px, np.ones(12, bool), np.r_[np.zeros(6, int), np.ones(6, int)], 2,
+                          DET | {"water_ndvi_default": 0.0})
+    hy0, _, strict0, loose0, muddy0, water0, old0 = res["segments"][0]
+    assert hy0 == pytest.approx(1.5 / 6, abs=1e-3)      # 1 + 0.5 covered pixels of 6
+    assert old0 == pytest.approx(2 / 6, abs=1e-3)       # the old rule counted both as all weed
+    assert strict0 < hy0 < loose0                       # brighter mat: less cover needed to look green
+    assert water0 == 4 and muddy0 is None               # too little open water to judge muddiness
+    assert res["segments"][1][0] == 0 and res["segments"][1][4:6] == [0.0, 6]
+    assert res["hyacinth_pct"] == pytest.approx(1.5 / 12 * 100, abs=0.01)
     assert res["hyacinth_pct_strict"] <= res["hyacinth_pct"] <= res["hyacinth_pct_loose"]
+    assert res["water_ndvi"] == 0.0
 
 
 def test_process_day_skips_mostly_cloudy_dates():

@@ -96,6 +96,8 @@ select {
 main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .meta { color: var(--text-muted); font-size: 13px; margin: 0 0 16px; }
 .meta a { color: var(--accent); }
+.stale { margin: -8px 0 16px; padding: 8px 12px; border-radius: 8px; font-size: 13px;
+  background: color-mix(in srgb, var(--critical) 12%, transparent); color: var(--text-primary); }
 
 .panel {
   background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px;

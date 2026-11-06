@@ -11,8 +11,14 @@ on:
   push:                    # publish code changes right away (the bot's own data commits don't trigger this)
     branches: [main]
   workflow_dispatch:
+    inputs:
+      warm_cache:
+        description: "Also download the images the yearly jobs need into GitHub's cache"
+        type: boolean
+        default: false
 
 permissions:
+  actions: read
   contents: write
   pages: write
   id-token: write
@@ -26,12 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
 
       # Per-pixel values of past images, so rebuilds don't download everything again.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: data/cache
           key: pixel-cache-${{ github.run_id }}
@@ -45,6 +51,10 @@ jobs:
         run: |
           uv run python pipeline/build_river_mask.py
           uv run python pipeline/synthetic_test.py
+
+      - name: Fill the image cache (when asked)
+        if: github.event_name == 'workflow_dispatch' && inputs.warm_cache
+        run: uv run python pipeline/warm_cache.py
 
       - name: Cross-check with Landsat (monthly)
         if: github.event.schedule == '0 3 1 * *'
@@ -95,7 +105,7 @@ jobs:
           git pull --rebase
           git push
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: web
 
@@ -107,7 +117,7 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # Load the deployed site and compare it with the repository: pages, scripts and data must be
   # this commit's, and the newest image recent. Retries while GitHub Pages' cache catches up.
@@ -118,11 +128,11 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main   # includes the data commit this run may have just pushed
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
 
       - name: Check the live site
         env:

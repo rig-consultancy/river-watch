@@ -24,7 +24,13 @@ tests/                      uv run pytest: calculations and the published data
 - **Imagery:** Sentinel-2 L2A (10 m, every ~5 days), free via Microsoft Planetary Computer.
 - **Clouds:** scenes with more than 40% cloud are skipped; remaining cloud and shadow pixels are
   masked using the scene classification layer. Dates where under 60% of the river is visible are skipped.
-- **Hyacinth:** river pixels with NDVI > 0.30.
+- **Hyacinth:** the covered share of each river pixel (`cover_fraction` in run.py). A 10 m pixel
+  part-covered by a mat mixes the mat's reflectance with the water's, linearly; with the river's
+  own dense-mat NDVI (`mat_ndvi`, per river), that day's open-water NDVI and the assumed brightness
+  of a mat against water (0.35 vs 0.10, red + NIR) the share is solved per pixel; under 10% counts
+  as 0. Until method 5 a pixel over NDVI 0.30 counted as all weed, which over-counted small and
+  scattered weed about twofold and made the figures noisier. Pixels over NDVI 0.30 are still what
+  is not counted as open water.
 - **Muddy water:** share of *open water* (NDWI > 0, not hyacinth) with NDTI (red vs green) > 0.05.
   Measuring it over all river pixels was wrong: mud banks, sparse weed and brown, dying hyacinth
   also look "red", so the old figure mostly tracked those and rose with hyacinth in the dry season.
@@ -56,18 +62,19 @@ tests/                      uv run pytest: calculations and the published data
 - **One-off jumps:** a stretch reading more than 15 points away from both neighbouring readings (each
   within 2 weeks, and agreeing with each other) is shown but not used (95 of 5,642 readings). A
   sudden jump in the latest image is kept out of the rankings until the next image confirms it.
-- **Likely ranges:** measured, not assumed. Images taken 3 days or less apart differ by ±3.2 points
-  river-wide and ±4.8 for a high-confidence stretch (80% range); the greenness cut-off is also tried
-  at NDVI 0.25 and 0.35. Each figure's range spans both. Trends hold at either cut-off (correlation
-  0.98); absolute levels move by about ±20%.
+- **Likely ranges:** images taken 3 days or less apart differ by ±2.0 points river-wide on the
+  Mula-Mutha and ±3.1 for a high-confidence stretch (80% range; the old count: ±3.0 and ±4.8); the
+  mat's assumed brightness is also tried at half and double. Each figure's range spans both.
 - **Clean-up detection:** a stretch with at least 20% cover that drops 15+ points to half or less
   within 3 weeks, stays low, outside the monsoon, is labelled by cause: "rain" (25 mm or more in
   between, daily rainfall from NASA POWER, public domain), "river-wide" (30%+ of stretches with weed
   dropped together: flow or wind) or "probable clean-up". Days until it grew back to half are tracked.
 - **Landsat check:** `crosscheck_landsat.py` measures the same pixels (at least 20 m inside the river)
-  from Landsat 8/9 within a day of a Sentinel-2 image. On the Mula-Mutha (82 pairs, 2017-2026)
-  stretches move together (correlation 0.78) but Landsat reads about 7 points higher at every level:
-  its 30 m pixels still catch bank plants on a 40-60 m river. It confirms direction, not level.
+  from Landsat 8/9 within a day of a Sentinel-2 image, both as covered shares of pixels. Landsat's
+  pixels are 3x coarser, so if coarse pixels inflated the old count, the two should now agree on the
+  level too, and they do: on the Mula-Mutha (83 pairs, 2017-2026) the average difference fell from
+  8.3 to 2.1 points (Pawana 8.9 to 3.1, Indrayani 7.4 to 3.3) and Landsat reads +1.3 points higher
+  instead of +6.4; stretches move together with correlation 0.92 (was 0.78).
   CI adds new Landsat images on the 1st of every month (`--new`; every pair again if the river
   area changed). The dashboard's "Cross-checked by other satellites" panel shows, for Landsat and
   for the Sentinel-1 radar, the days compared, how often they moved the same way as Sentinel-2
@@ -78,11 +85,11 @@ tests/                      uv run pytest: calculations and the published data
   compared). Shown in the dashboard's "How the figures are checked" panel.
 - **Planted-weed test:** `synthetic_test.py` plants mats of 100 m² to 1 ha into 8 clear, almost
   weed-free images per river (grown over river pixels on a 2 m grid, mixed with the real pixel in
-  reflectance, mat NDVI from the river's own dense mats) and measures them with the normal rule.
-  Result: every mat is seen; mats of 1 ha are measured within about 1-6% of their area, but small
-  ones are over-counted (100 m² reads as about twice its size), because a pixel about 20% covered
-  by a dense mat already passes the threshold. Mat and water brightness are assumed (config
-  `synthetic`) and also tried at half and double their ratio.
+  reflectance, mat NDVI from the river's own dense mats) and measures them as the pipeline does.
+  Every mat is seen and measured at 91-114% of its area (the old all-or-nothing count: 101-224%,
+  100 m² read as about twice its size). It uses the same mixing model as the measurement, so on its
+  own it cannot prove the model; the mat's true brightness is also set to half and double the
+  assumed (small mats then read 69-155%), and the Landsat check above is the independent test.
 - **Muddier than the rest:** on dry-weather images (under 1 mm of rain in 7 days) each stretch's
   mean NDTI is compared with the river's middle stretch that day; one that is redder on at least
   90% of 30+ dry days by 0.04 or more is flagged (not low-confidence stretches, where bank pixels

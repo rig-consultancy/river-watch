@@ -25,11 +25,11 @@ import yaml
 from rasterio.enums import Resampling
 from shapely import STRtree, points
 
-from run import (ROOT, STAC_URL, day_pixels, load_river, make_grid, make_segments, read_band,
-                 reject_dates, river_area, search)
+from run import (ROOT, STAC_URL, cover_fraction, day_pixels, load_river, make_grid, make_segments, read_band,
+                 reject_dates, river_area, river_det, search)
 
 # Bump when what is stored per pair changes; --new then compares every pair again.
-VERSION = 3  # 2: muddy water share; 3: and mean NDTI of open water
+VERSION = 4  # 2: muddy water share; 3: and mean NDTI of open water; 4: weed as covered share of pixels
 
 # QA_PIXEL bits: 1 dilated cloud, 2 cirrus, 3 cloud, 4 cloud shadow.
 QA_BAD = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
@@ -58,7 +58,7 @@ def landsat_indices(item, tf, w, h, mask):
 
 
 def build(river, cfg, new_only=False, max_days=1):
-    det = cfg["detection"]
+    det = river_det(river, cfg)
     line, aoi, corridor = load_river(river, det)
     tf, w, h, mask = make_grid(corridor)
     river_px, _, _ = river_area(river["id"], tf, w, h, mask, aoi)
@@ -114,7 +114,15 @@ def build(river, cfg, new_only=False, max_days=1):
         both = keep & np.isfinite(ls) & np.isfinite(s2)
         if both.sum() < 0.5 * keep.sum():
             return None  # mostly cloudy in one of them
-        a, b = s2[both] > thr, ls[both] > thr
+        # Weed cover as the pipeline measures it (covered share of each pixel, against each image's
+        # own open water), and the old all-or-nothing count. If coarse pixels were what inflated the
+        # old count, Landsat's 30 m and Sentinel-2's 10 m should agree better on the first.
+        def water_nd(p, nd):
+            w = keep & (p["ndwi"] > det["water_ndwi"]) & (nd <= thr) & np.isfinite(nd)
+            return float(np.median(nd[w])) if w.sum() >= 50 else det["water_ndvi_default"]
+        a = cover_fraction(s2, water_nd(s2_px, s2), det)[both]
+        b = cover_fraction(ls, water_nd(ls_px, ls), det)[both]
+        a_old, b_old = s2[both] > thr, ls[both] > thr
         idx = seg_idx[both]
         n = np.bincount(idx, minlength=n_segs)
         sa = np.bincount(idx, weights=a, minlength=n_segs) / np.maximum(n, 1) * 100
@@ -132,7 +140,9 @@ def build(river, cfg, new_only=False, max_days=1):
             "landsat_ndti": round(float(ls_px["ndti"][water].mean()), 4)}
         return {"date": d, "landsat_date": it.datetime.date().isoformat(), "landsat_id": it.id,
                 "pixels": int(both.sum()), "sentinel2_pct": round(float(a.mean() * 100), 2),
-                "landsat_pct": round(float(b.mean() * 100), 2), **muddy,
+                "landsat_pct": round(float(b.mean() * 100), 2),
+                "sentinel2_old_pct": round(float(a_old.mean() * 100), 2),
+                "landsat_old_pct": round(float(b_old.mean() * 100), 2), **muddy,
                 "stretches": [[int(k), round(float(sa[k]), 1), round(float(sb[k]), 1)] for k in np.nonzero(big)[0]]}
 
     with ThreadPoolExecutor(4) as pool:
@@ -147,11 +157,15 @@ def build(river, cfg, new_only=False, max_days=1):
         return
     s2 = np.array([r["sentinel2_pct"] for r in results])
     ls = np.array([r["landsat_pct"] for r in results])
+    old = np.array([(r["sentinel2_old_pct"], r["landsat_old_pct"]) for r in results])
     st = np.array([s[1:] for r in results for s in r["stretches"]])
     summary = {
         "pairs": len(results),
         "river_mae_pts": round(float(np.mean(np.abs(s2 - ls))), 1),
         "river_bias_pts": round(float(np.mean(ls - s2)), 1),  # Landsat minus Sentinel-2
+        # The same with the old all-or-nothing count, for comparison.
+        "old_river_mae_pts": round(float(np.mean(np.abs(old[:, 0] - old[:, 1]))), 1),
+        "old_river_bias_pts": round(float(np.mean(old[:, 1] - old[:, 0])), 1),
         "river_correlation": round(float(np.corrcoef(s2, ls)[0, 1]), 3) if len(results) > 2 else None,
         "stretch_comparisons": int(len(st)),
         "stretch_mae_pts": round(float(np.mean(np.abs(st[:, 0] - st[:, 1]))), 1) if len(st) else None,

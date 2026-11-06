@@ -48,7 +48,7 @@ SCL_OK = [2, 4, 5, 6, 7]
 RADAR_EDGES = np.round(np.arange(-35, 5.001, 0.25), 2)
 # Bump when the way history numbers are computed changes; run.py then rebuilds the optical
 # history (from the local pixel cache where it exists).
-METHOD = 4
+METHOD = 5  # 5: weed cover as the covered share of each pixel, not all-or-nothing
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 
@@ -232,6 +232,35 @@ def classify(px, det):
     return ok, hyacinth, water
 
 
+def river_det(river, cfg):
+    """Detection settings for one river: the shared ones plus its own pure-mat NDVI."""
+    return {**cfg["detection"], "mat_ndvi": river["mat_ndvi"]}
+
+
+def cover_fraction(ndvi, water_ndvi, det, scale=1.0):
+    """Share of each pixel covered by floating weed (0-1, NaN where unusable).
+
+    A 10 m pixel partly covered by a mat mixes the mat's reflectance with the water's. In
+    reflectance the mix is linear, so with brightness B (red + NIR) and NDVI N of each:
+        N_pixel = (f Bm Nm + (1 - f) Bw Nw) / (f Bm + (1 - f) Bw)
+    solved for f. Nm is the river's own dense-mat NDVI (mat_ndvi), Nw the open water's that day;
+    Bm/Bw is the one assumed number (scale tries it at other values for the likely range). Shares
+    under subpixel_floor are set to 0: water pixels scatter a little around Nw. Counting a pixel
+    as all weed once it passed NDVI 0.3 over-counted small patches about twofold (planted-weed test).
+    """
+    bm, bw, nm = det["mat_brightness"] * scale, det["water_brightness"], det["mat_ndvi"]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        f = bw * (ndvi - water_ndvi) / (bm * (nm - ndvi) + bw * (ndvi - water_ndvi))
+    f = np.where(ndvi >= nm, 1.0, np.where(ndvi <= water_ndvi, 0.0, f))
+    f = np.where(np.isnan(ndvi), np.nan, np.clip(f, 0, 1))
+    return np.where(f < det["subpixel_floor"], 0.0, f)
+
+
+def water_ndvi(px, water, det):
+    """Typical NDVI of the day's open water (the background a mat is mixed with)."""
+    return float(np.median(px["ndvi"][water])) if water.sum() >= 50 else det["water_ndvi_default"]
+
+
 def river_mask_path(river_id: str) -> Path:
     return ROOT / f"data/masks/{river_id}.tif"
 
@@ -267,15 +296,18 @@ def process_day(px, keep, seg_idx, n_segs, det):
     if valid_fraction < det["min_valid_fraction"]:
         return None
     ndti = px["ndti"]
-    # The same count at a stricter and a looser greenness threshold, for the likely range.
-    delta = det["range_ndvi_delta"]
-    hy_strict = ok & (px["ndvi"] > det["hyacinth_ndvi"] + delta)
-    hy_loose = ok & (px["ndvi"] > det["hyacinth_ndvi"] - delta)
+    # Covered share of every pixel; the same at the assumed mat brightness halved and doubled
+    # gives the likely range (a brighter mat needs less cover to look as green: lower cover).
+    nw = water_ndvi(px, water, det)
+    lo_scale, hi_scale = det["brightness_range"]
+    cover, strict, loose = (np.where(ok, np.nan_to_num(cover_fraction(px["ndvi"], nw, det, k)), 0.0)
+                            for k in (1.0, hi_scale, lo_scale))
 
     total = np.bincount(seg_idx[ok], minlength=n_segs)
-    hy_count = np.bincount(seg_idx[hyacinth], minlength=n_segs)
-    strict_count = np.bincount(seg_idx[hy_strict], minlength=n_segs)
-    loose_count = np.bincount(seg_idx[hy_loose], minlength=n_segs)
+    hy_count = np.bincount(seg_idx, weights=cover, minlength=n_segs)
+    strict_count = np.bincount(seg_idx, weights=strict, minlength=n_segs)
+    loose_count = np.bincount(seg_idx, weights=loose, minlength=n_segs)
+    thr_count = np.bincount(seg_idx[hyacinth], minlength=n_segs)
     w_count = np.bincount(seg_idx[water], minlength=n_segs)
     nt_sum = np.bincount(seg_idx[water], weights=ndti[water], minlength=n_segs)
     muddy = water & (ndti > det["turbid_ndti"])
@@ -288,18 +320,22 @@ def process_day(px, keep, seg_idx, n_segs, det):
             segs.append(None)
         else:
             nt = round(float(nt_sum[i] / w_count[i]), 4) if w_count[i] >= 5 else None
-            # [hyacinth, mean NDTI of open water, hyacinth strict, loose, muddy share of open water, open-water px]
+            # [hyacinth cover, mean NDTI of open water, cover at brighter mat, at darker mat, muddy share of
+            #  open water, open-water px, share of pixels over the NDVI threshold (the old measure)]
             segs.append([round(float(hy_count[i] / total[i]), 3), nt,
                          round(float(strict_count[i] / total[i]), 3), round(float(loose_count[i] / total[i]), 3),
-                         round(float(muddy_count[i] / w_count[i]), 3) if w_count[i] >= 5 else None, int(w_count[i])])
+                         round(float(muddy_count[i] / w_count[i]), 3) if w_count[i] >= 5 else None, int(w_count[i]),
+                         round(float(thr_count[i] / total[i]), 3)])
     # Too little open water (low flow, river choked by weed) gives no reliable muddiness figure.
     enough_water = water.sum() >= max(50, 0.05 * ok.sum())
     return {
         "valid_fraction": round(float(valid_fraction), 3),
-        "hyacinth_km2": round(float(hyacinth.sum()) * RES * RES / 1e6, 4),
-        "hyacinth_pct": round(float(hyacinth.sum() / ok.sum() * 100), 2),
-        "hyacinth_pct_strict": round(float(hy_strict.sum() / ok.sum() * 100), 2),
-        "hyacinth_pct_loose": round(float(hy_loose.sum() / ok.sum() * 100), 2),
+        "hyacinth_km2": round(float(cover.sum()) * RES * RES / 1e6, 4),
+        "hyacinth_pct": round(float(cover.sum() / ok.sum() * 100), 2),
+        "hyacinth_pct_strict": round(float(strict.sum() / ok.sum() * 100), 2),
+        "hyacinth_pct_loose": round(float(loose.sum() / ok.sum() * 100), 2),
+        "hyacinth_pct_threshold": round(float(hyacinth.sum() / ok.sum() * 100), 2),
+        "water_ndvi": round(nw, 3),
         "open_water_pct": round(float(water.sum() / ok.sum() * 100), 2),
         "mean_ndti": round(float(ndti[water].mean()), 4) if enough_water else None,
         "turbid_pct": round(float((ndti[water] > det["turbid_ndti"]).mean() * 100), 2) if enough_water else None,
@@ -397,7 +433,7 @@ def update_radar(river, rad, history, since, until, tf, w, h, mask, save):
 
 
 def run_river(river, cfg, since: date | None):
-    det, rad = cfg["detection"], cfg.get("radar")
+    det, rad = river_det(river, cfg), cfg.get("radar")
     line, aoi, corridor = load_river(river, det)
     segments = make_segments(line, det["segment_length_m"])
     tf, w, h, mask = make_grid(corridor)
@@ -902,7 +938,7 @@ def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct):
 
 
 def write_web(river, cfg, segments, history, area):
-    det, rad, qual = cfg["detection"], cfg.get("radar"), cfg["quality"]
+    det, rad, qual = river_det(river, cfg), cfg.get("radar"), cfg["quality"]
     seg_px = area["px"]
     all_dates = sorted(history["dates"])
     places = segment_places(river, segments)
@@ -1047,7 +1083,8 @@ def write_web(river, cfg, segments, history, area):
         "river": {"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"), "bbox": river["bbox"]},
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "latest_date": dates[-1],
-        "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"]},
+        "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"],
+                       "mat_ndvi": det["mat_ndvi"], "subpixel_floor": det["subpixel_floor"]},
         # Independent check against Landsat 8/9 (see crosscheck_landsat.py).
         "landsat_check": landsat_check(river["id"]),
         # Whole-river evidence behind the flood test (see build_river_mask.py).
@@ -1076,8 +1113,8 @@ def write_web(river, cfg, segments, history, area):
         # How far apart two images of the same thing land, and how the greenness threshold
         # moves the figures; together they make the likely ranges.
         "uncertainty": {
-            "range_ndvi": [round(det["hyacinth_ndvi"] - det["range_ndvi_delta"], 2),
-                           round(det["hyacinth_ndvi"] + det["range_ndvi_delta"], 2)],
+            # Mat brightness (against water) tried at these multiples of the assumed value.
+            "range_brightness": det["brightness_range"],
             "river_noise_pts": None if river_sigma is None else round(z80 * river_sigma, 1),
             "river_pairs": river_pairs,
             "segment_noise_pts": {k: None if v[0] is None else round(z80 * v[0], 1) for k, v in seg_sigma.items()},

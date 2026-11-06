@@ -608,7 +608,7 @@ function drawCharts() {
   }
   const lc = current.landsat_check;
   if (lc?.series && !reg) {
-    hy.push({ name: t("l_landsat", { b: nf(lc.river_bias_pts) }), cls: "ls", rows: lc.series, key: "landsat_pct", dotsOnly: true });
+    hy.push({ name: t("l_landsat"), cls: "ls", rows: lc.series, key: "landsat_pct", dotsOnly: true });
   }
   lineChart($("c-hy"), hy, t("c_hy"));
   const tu = [optical("turbid_pct")];
@@ -644,7 +644,7 @@ function drawChecks() {
   const pct = (v) => `${nf(v * 100, 0)}%`;
   const cards = []; // [title, [[label, value], ...]]
   if (lc) cards.push([t("x_landsat"), [[t("x_pairs"), nf(lc.pairs, 0)], [t("x_dir"), dir(lc.direction)],
-    [t("x_diffh"), t("x_diff_ls", { d: nf(lc.river_mae_pts), b: nf(lc.river_bias_pts) })],
+    [t("x_diffh"), t("x_diff_ls", { d: nf(lc.river_mae_pts), b: (lc.river_bias_pts > 0 ? "+" : "") + nf(lc.river_bias_pts) })],
     [t("x_checked"), lc.checked ? fmtDate(lc.checked) : "–"]]]);
   if (rad) cards.push([t("x_radar"), [[t("x_pairs"), nf(rad.pairs, 0)], [t("x_dir"), dir(rad.direction)],
     [t("x_diffh"), t("x_diff", { d: nf(rad.mae_pct) })], [t("x_checked"), t("x_every_run")]]]);
@@ -653,7 +653,8 @@ function drawChecks() {
     const seen = Math.min(...syn.by_size.map((r) => r.seen_share));
     cards.push([t("x_synthetic"), [
       [t("x_syn_big", { m2: nf(syn.big_m2, 0) }), big.map((r) => t("x_syn_area", { m2: nf(r.m2, 0), p: pct(r.found_share) })).join("<br>")],
-      [t("x_syn_small", { m2: nf(small.m2, 0) }), `${t("x_syn_counted", { p: pct(small.found_share) })} <span class="weak">${t("x_syn_over")}</span>`],
+      [t("x_syn_small", { m2: nf(small.m2, 0) }), t("x_syn_counted", { p: pct(small.found_share), o: pct(small.old_rule_found_share) }) +
+        (small.found_share > 1.3 ? ` <span class="weak">${t("x_syn_over")}</span>` : "")],
       [t("x_syn_seen"), pct(seen)]]]);
   }
   if (lc?.ndti_pairs || rc) cards.push([t("x_muddy"), [
@@ -669,17 +670,17 @@ function drawChecks() {
 
 function drawAbout() {
   const th = current.thresholds, look = current.outlook;
-  const vars = { ndvi: nf(th.hyacinth_ndvi, 2), ndti: nf(th.turbid_ndti, 2), a: nf(look?.alert_pct ?? 30, 0),
+  const vars = { ndvi: nf(th.hyacinth_ndvi, 2), mat: nf(th.mat_ndvi, 2), ndti: nf(th.turbid_ndti, 2), a: nf(look?.alert_pct ?? 30, 0),
     mae: nf(look?.mae_river), maes: nf(look?.mae_segment) };
   const ft = current.flood_test?.flood_test?.at(-1);
   if (ft) Object.assign(vars, { fy: ft.year, fn: nf(ft.dry_green_px, 0), fc: nf(ft.cleared_px, 0), fs: nf(ft.stayed_px, 0),
     fch: nf(ft.channel_cleared_share * 100, 0), fgc: nf(ft.green_channel_stayed_share * 100, 0) });
   const lc = current.landsat_check;
-  vars.landsat = lc ? t("about_landsat", { n: nf(lc.pairs, 0), mae: nf(lc.river_mae_pts), bias: nf(lc.river_bias_pts),
+  vars.landsat = lc ? t("about_landsat", { n: nf(lc.pairs, 0), mae: nf(lc.river_mae_pts), bias: (lc.river_bias_pts > 0 ? "+" : "") + nf(lc.river_bias_pts),
     r: nf(lc.river_correlation, 2), sr: nf(lc.stretch_correlation, 2), smae: nf(lc.stretch_mae_pts) }) : "";
   const u = current.uncertainty;
   if (u) Object.assign(vars, { rn: nf(u.river_noise_pts), rp: nf(u.river_pairs, 0), sh: nf(u.segment_noise_pts.high),
-    nlo: nf(u.range_ndvi[0], 2), nhi: nf(u.range_ndvi[1], 2), nrej: nf((current.rejected_dates || []).length, 0),
+    nrej: nf((current.rejected_dates || []).length, 0),
     nj: nf(u.one_off_jumps, 0), nr: nf(u.readings, 0) });
   document.querySelectorAll("[data-i18n-html]").forEach((el) => (el.innerHTML = t(el.dataset.i18nHtml, vars)));
   const el = $("radar-about");
@@ -796,6 +797,11 @@ function setLang(lang) {
 
 function renderAll(fit) {
   $("meta").textContent = t("meta", { date: fmtDate(current.latest_date), n: nf(current.series.length, 0) });
+  // Outside the monsoon a clear image arrives every few days: a much older one means the
+  // automatic update has stopped, so say so rather than show old figures as current.
+  const age = Math.floor((Date.now() - toT(current.latest_date)) / dayMs), month = new Date().getMonth() + 1;
+  $("stale").hidden = age <= 12 || (month >= 6 && month <= 9);
+  $("stale").textContent = t("stale", { n: nf(age, 0), date: fmtDate(current.latest_date) });
   drawLegend();
   drawTiles();
   drawSegments(fit);

@@ -9,16 +9,19 @@ rivers:
     name_mr: मुळा-मुठा (पुणे)
     bbox: [73.72, 18.44, 74.02, 18.62]
     osm_names: "Mula|Mutha"
+    mat_ndvi: 0.81            # NDVI of a pixel fully covered by a mat (see synthetic_test.py)
   - id: pawana-pcmc
     name: Pawana (Pimpri-Chinchwad)
     name_mr: पवना (पिंपरी-चिंचवड)
     bbox: [73.66, 18.55, 73.85, 18.69]
     osm_names: "Pawana|Pavana|पवना"
+    mat_ndvi: 0.79            # NDVI of a pixel fully covered by a mat (see synthetic_test.py)
   - id: indrayani-pcmc
     name: Indrayani (Dehu-Alandi)
     name_mr: इंद्रायणी (देहू-आळंदी)
     bbox: [73.74, 18.65, 73.95, 18.75]
     osm_names: "Indrayani|इंद्रायणी"
+    mat_ndvi: 0.84            # NDVI of a pixel fully covered by a mat (see synthetic_test.py)
 
 # Detection thresholds (Sentinel-2 L2A surface reflectance).
 detection:
@@ -27,7 +30,16 @@ detection:
   hyacinth_ndvi: 0.30        # floating vegetation on water
   turbid_ndti: 0.05          # (red - green) / (red + green) on open water; higher = muddier
   water_ndwi: 0.0            # (green - nir) / (green + nir) above this = open water
-  range_ndvi_delta: 0.05     # likely range also counts hyacinth at NDVI 0.25 and 0.35
+  # Weed cover is the covered share of each pixel (pipeline/run.py cover_fraction): a pixel's NDVI
+  # is a mix of the mat's (each river's mat_ndvi) and the open water's that day, weighted by their
+  # brightness (red + NIR reflectance). Typical values for dense floating plants and river water;
+  # the likely range tries the mat's brightness at half and double. Shares under subpixel_floor
+  # count as 0 (water scatters a little). Pixels over hyacinth_ndvi are still what is not water.
+  mat_brightness: 0.35
+  water_brightness: 0.10
+  brightness_range: [0.5, 2.0]
+  subpixel_floor: 0.1
+  water_ndvi_default: 0.02   # open water's NDVI when a day has too little open water to measure
   segment_length_m: 500      # river is split into segments of this length
   river_buffer_m: 25         # half-width used when OSM has only a centreline
   corridor_m: 150            # search this far either side of the centreline for the real channel
@@ -73,31 +85,30 @@ confidence:
 # robust standard deviations. A stretch reading is a one-off jump when it differs by more than
 # spike_pts from both neighbouring readings (each within 2 weeks) while those two agree.
 quality:
+  # Thresholds below were set again for the covered-share measure (method 5), which reads lower and
+  # steadier than the old all-or-nothing count: a stretch that read ~30% before reads ~10-14% now.
   max_aot: 0.8
   cloud_share: 0.1
   max_z: 3
-  spike_pts: 15
+  spike_pts: 10              # ~3x the repeat noise of a high-confidence stretch (±3 points)
 
 # Clean-up detection: sharp, lasting drops on a stretch outside the monsoon, labelled "rain"
 # (rain_mm or more in between, NASA POWER), "river_wide" (river_wide_share or more of the
 # stretches that had weed dropped together: flow or wind) or "removal" (probable clean-up).
 cleanup:
-  min_before: 20             # % cover needed before the drop
-  drop_pts: 15               # at least this many points (and 3x the stretch's noise)
+  min_before: 10             # % cover needed before the drop
+  drop_pts: 10               # at least this many points (and 3x the stretch's noise)
   rain_mm: 25
   river_wide_share: 0.3
 
 # Planted-weed test (pipeline/synthetic_test.py): mats of these sizes are planted into clear,
-# almost weed-free images and measured with the normal rule. Brightness (red + NIR reflectance) of
-# a dense mat and of river water decides how a part-covered pixel mixes; typical values for
-# floating plants and turbid water, also tried at half and double their ratio.
+# almost weed-free images and measured with the normal rule. Planted pixels mix with the real ones
+# by the same brightness model, with the mat's true brightness also at half and double the assumed.
 synthetic:
   sizes_m2: [100, 300, 1000, 3000, 10000]
   big_m2: 1000               # "large mats" in the summary: this size and up
   dates: 8                   # clear dates used, spread over the years
   max_background_pct: 2      # a date counts as almost weed-free below this cover
-  mat_brightness: 0.35
-  water_brightness: 0.10
 
 # Muddy water checks. Dry weather: under dry_mm of rain over the dry_days up to an image. A stretch
 # is flagged "muddier than the rest" when, on at least min_readings dry-weather images, its open
@@ -118,7 +129,7 @@ muddy:
 # not low-confidence. A stretch crossing the outlook's alert_pct, or rising spread_pts within 3 weeks.
 alerts:
   days: 120
-  spread_pts: 15
+  spread_pts: 10
 
 # Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
 # banks fall in both is a border stretch and counts towards both). See data/regions/README.md.
@@ -139,4 +150,4 @@ regions:
 # range seen in backtests, and per stretch the chance of being above alert_pct.
 outlook:
   horizon_days: 14
-  alert_pct: 30
+  alert_pct: 15

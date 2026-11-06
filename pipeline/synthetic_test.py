@@ -10,10 +10,14 @@ mat does. Each 10 m pixel then reads as a mix of the mat and what was really the
 with f the share of the pixel the mat covers, NDVI_mat drawn from the river's own dense mats
 (pixels whose neighbours are all dense too), NDVI_bg the pixel's real value that day, and B the
 brightness (red + NIR) of each: mixing happens in reflectance, so the brighter mat counts more.
-Detection is the normal rule (NDVI above the threshold); the found area is what changed.
+Each trial is measured the way the pipeline measures a day (cover_fraction in run.py: the covered
+share of each pixel, against that day's open-water NDVI); the found area is what changed. The old
+rule (a pixel over NDVI 0.3 counts as all weed) is measured alongside for comparison.
 
-Brightness of a mat against water is the one assumed number (configured as synthetic.mat_brightness
-and water_brightness); the test also runs at half and double their ratio and reports the spread.
+How much brighter a mat is than water is the one assumed number (detection.mat_brightness and
+water_brightness). The planted mats also use it, so the test cannot check it by itself: their true
+brightness is also set to half and double the assumed one and the spread is reported. It also
+prints the river's pure-mat NDVI percentiles; mat_ndvi in the config is the 30th.
 Writes data/validation/<river>-synthetic.json (commit it); the dashboard shows the summary.
 
   uv run python pipeline/synthetic_test.py [river-id ...]
@@ -28,8 +32,8 @@ import yaml
 from shapely import STRtree, points
 import rasterio
 
-from run import (ROOT, RES, confidence, day_pixels, load_river, make_grid, make_segments, reject_dates,
-                 river_area, search)
+from run import (ROOT, RES, classify, confidence, cover_fraction, day_pixels, load_river, make_grid,
+                 make_segments, reject_dates, river_area, river_det, search, water_ndvi)
 
 SUB = 5  # 2 m sub-pixels per 10 m pixel side
 
@@ -62,13 +66,13 @@ def plant(river2d, rng, area_m2, center_px):
     return {(int(pr[i] + rows[0]), int(pc[i] + cols[0])): float(cover[i]) for i in np.nonzero(cover)[0]}
 
 
-def ndvi_on(river, d, hist, det, tf, w, h, mask):
-    """One date's NDVI per corridor pixel, from the local cache or downloaded again (GitHub's
-    cache may not have it)."""
+def pixels_on(river, d, hist, det, tf, w, h, mask):
+    """One date's indices per corridor pixel, from the local cache or downloaded again (GitHub's
+    cache may not have them)."""
     items = [] if (ROOT / f"data/cache/{river['id']}/{d}.npz").exists() else [
         s for s in search(river, date.fromisoformat(d), date.fromisoformat(d), det).get(d, [])
         if s.id in hist["dates"][d]["scenes"]]
-    return day_pixels(river["id"], d, items, tf, w, h, mask)["ndvi"]
+    return day_pixels(river["id"], d, items, tf, w, h, mask)
 
 
 def dense_mat_ndvi(river, dates, hist, det, tf, w, h, mask, river2d, limit=6):
@@ -77,7 +81,7 @@ def dense_mat_ndvi(river, dates, hist, det, tf, w, h, mask, river2d, limit=6):
     vals = []
     for d in weedy:
         nd = np.full(mask.shape, np.nan, "float32")
-        nd[mask] = ndvi_on(river, d, hist, det, tf, w, h, mask)
+        nd[mask] = pixels_on(river, d, hist, det, tf, w, h, mask)["ndvi"]
         dense = (nd > 0.5) & river2d
         core = dense.copy()
         for dr in (-1, 0, 1):
@@ -88,7 +92,7 @@ def dense_mat_ndvi(river, dates, hist, det, tf, w, h, mask, river2d, limit=6):
 
 
 def build(river, cfg, trials=150, seed=1):
-    det, syn = cfg["detection"], cfg["synthetic"]
+    det, syn = river_det(river, cfg), cfg["synthetic"]
     thr = det["hyacinth_ndvi"]
     line, aoi, corridor = load_river(river, det)
     tf, w, h, mask = make_grid(corridor)
@@ -118,15 +122,19 @@ def build(river, cfg, trials=150, seed=1):
             and hist["dates"][d]["valid_fraction"] >= 0.95]
     picks = [calm[i] for i in np.linspace(0, len(calm) - 1, min(syn["dates"], len(calm))).round().astype(int)]
     mats = dense_mat_ndvi(river, dates, hist, det, tf, w, h, mask, river_px)
-    print(f"  {len(picks)} clear dates, {len(mats)} pure mat pixels (median NDVI {np.median(mats):.2f})")
+    pct = {q: round(float(np.percentile(mats, q)), 3) for q in (10, 30, 50)}
+    print(f"  {len(picks)} clear dates, {len(mats)} pure mat pixels (NDVI percentiles {pct}; config {det['mat_ndvi']})")
 
     ratios = (1.0, 0.5, 2.0)  # mat brightness as configured, then at half and double
     rng = np.random.default_rng(seed)
     river_cells = np.argwhere(river_px)
-    results = []  # (size, class, true m2, found m2 at ratio 1, 0.5, 2)
+    results = []  # (size, class, true m2, found m2 at ratio 1, 0.5, 2, the old rule's at ratio 1)
     for d in picks:
+        px = pixels_on(river, d, hist, det, tf, w, h, mask)
         bg = np.full(mask.shape, np.nan, "float32")
-        bg[mask] = ndvi_on(river, d, hist, det, tf, w, h, mask)
+        bg[mask] = px["ndvi"]
+        _, _, water = classify(px, det)
+        nw = water_ndvi(px, water & river_px[mask], det)  # as the pipeline sees that day
         for size in syn["sizes_m2"]:
             for _ in range(trials // len(picks) + 1):
                 r0, c0 = river_cells[rng.integers(len(river_cells))]
@@ -140,36 +148,40 @@ def build(river, cfg, trials=150, seed=1):
                 if not np.isfinite(nd_bg).all():
                     continue  # cloud in the way: not a fair trial
                 nd_mat = rng.choice(mats, len(cells))
-                before = (nd_bg > thr).sum()
+                before = cover_fraction(nd_bg, nw, det).sum()
                 found = []
                 for scale in ratios:
-                    after = mixed_ndvi(f, nd_mat, nd_bg, syn["mat_brightness"] * scale, syn["water_brightness"])
-                    found.append(float(((after > thr).sum() - before) * RES * RES))
-                results.append((size, conf[seg2d[r0, c0]], float(f.sum() * RES * RES), *found))
+                    after = mixed_ndvi(f, nd_mat, nd_bg, det["mat_brightness"] * scale, det["water_brightness"])
+                    found.append(float((cover_fraction(after, nw, det).sum() - before) * RES * RES))
+                    if scale == 1.0:
+                        old = float(((after > thr).sum() - (nd_bg > thr).sum()) * RES * RES)
+                results.append((size, conf[seg2d[r0, c0]], float(f.sum() * RES * RES), *found, old))
 
-    res = np.array([(s, t, a, b, c) for s, _, t, a, b, c in results], float)
+    res = np.array([(s, t, a, b, c, o) for s, _, t, a, b, c, o in results], float)
     classes = np.array([c for _, c, *_ in results])
 
     def summarise(sel):
-        true, found = res[sel, 1], res[sel, 2:]
+        true, found = res[sel, 1], res[sel, 2:5]
         share = found.sum(axis=0) / true.sum()
         return {"trials": int(sel.sum()), "found_share": round(float(share[0]), 3),
                 "found_share_range": [round(float(share.min()), 3), round(float(share.max()), 3)],
-                # A mat counts as seen when at least one pixel newly reads as weed.
-                "seen_share": round(float((res[sel, 2] > 0).mean()), 3)}
+                # A mat counts as seen when the measured cover rose at all.
+                "seen_share": round(float((res[sel, 2] > 0).mean()), 3),
+                "old_rule_found_share": round(float(res[sel, 5].sum() / true.sum()), 3)}
 
     by_size = [{"m2": int(s), **summarise(res[:, 0] == s)} for s in syn["sizes_m2"]]
     big = res[:, 0] >= syn["big_m2"]
     by_class = {c: summarise(big & (classes == c)) for c in ("high", "medium", "low") if (big & (classes == c)).sum() >= 20}
-    out = {"dates": picks, "mat_ndvi_median": round(float(np.median(mats)), 3), "pure_mat_pixels": int(len(mats)),
-           "brightness": {"mat": syn["mat_brightness"], "water": syn["water_brightness"], "tried": [0.5, 2.0]},
+    out = {"dates": picks, "mat_ndvi_percentiles": pct, "mat_ndvi": det["mat_ndvi"], "pure_mat_pixels": int(len(mats)),
+           "brightness": {"mat": det["mat_brightness"], "water": det["water_brightness"], "tried": [0.5, 2.0]},
            "big_m2": syn["big_m2"], "by_size": by_size, "big_by_confidence": by_class}
     path = ROOT / f"data/validation/{river['id']}-synthetic.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, indent=1))
     for row in by_size:
         print(f"  {row['m2']:>6} m2: found {row['found_share']:.0%} of area "
-              f"({row['found_share_range'][0]:.0%}-{row['found_share_range'][1]:.0%}), seen {row['seen_share']:.0%}")
+              f"({row['found_share_range'][0]:.0%}-{row['found_share_range'][1]:.0%}), seen {row['seen_share']:.0%}; "
+              f"old rule {row['old_rule_found_share']:.0%}")
     print(f"  by confidence (mats >= {syn['big_m2']} m2): {by_class}")
 
 

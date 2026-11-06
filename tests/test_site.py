@@ -145,8 +145,9 @@ def test_published_river_data_is_consistent(river):
         assert d["segments"]["features"][a["segment"]]["properties"]["confidence"] != "low" or a["type"] == "cleanup"
     syn = d["synthetic_test"]
     assert syn and all(r["trials"] >= 100 and r["seen_share"] >= 0.9 for r in syn["by_size"])
-    big = [r["found_share"] for r in syn["by_size"] if r["m2"] >= 10000]
-    assert all(0.9 <= v <= 1.2 for v in big), "large planted mats should be measured near their true area"
+    # Every planted mat size is measured near its true area (the old count read 100 m² as ~200%).
+    assert all(0.8 <= r["found_share"] <= 1.25 for r in syn["by_size"]), [r["found_share"] for r in syn["by_size"]]
+    assert syn["mat_ndvi"] == next(r["mat_ndvi"] for r in CFG["rivers"] if r["id"] == river)
     flagged = [f["properties"] for f in d["segments"]["features"] if f["properties"].get("muddier")]
     assert all(p["confidence"] != "low" and p["dry_muddy"]["n"] >= 30 for p in flagged)
 
