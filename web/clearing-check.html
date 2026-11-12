@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Independent satellite check of water hyacinth clearing on the Mula-Mutha, Pune: sample report by RIG Consultancy.">
+<title>Hyacinth Clearing Check, Pune</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single-column field report, figures first, with charts and a ledger table of detected clearings */
+:root{
+  --bg:#f5f8f7; --paper:#ffffff; --ink:#15302c; --muted:#5a706c; --rule:#d5e1de;
+  --water:#1f6f8b; --weed:#4f8a2b; --weed-soft:rgba(79,138,43,.16); --event:rgba(31,111,139,.14); --warn:#b4531d;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1917; --paper:#142320; --ink:#e3eeeb; --muted:#93aaa5; --rule:#27403b;
+  --water:#5bb3d1; --weed:#8cc761; --weed-soft:rgba(140,199,97,.18); --event:rgba(91,179,209,.18); --warn:#f08a4b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1917; --paper:#142320; --ink:#e3eeeb; --muted:#93aaa5; --rule:#27403b;
+  --water:#5bb3d1; --weed:#8cc761; --weed-soft:rgba(140,199,97,.18); --event:rgba(91,179,209,.18); --warn:#f08a4b; color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--body)}
+.wrap{max-width:860px;margin:0 auto;padding-block:40px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:36px}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--water)}
+h1{font:700 clamp(30px,5vw,44px)/1.08 var(--display);margin:10px 0 12px;text-wrap:balance}
+h2{font:600 22px/1.2 var(--display);margin:0 0 6px;text-wrap:balance}
+p{margin:0;max-width:66ch}
+.lede{font-size:17px;color:var(--muted)}
+.meta{font:13px var(--mono);color:var(--muted);margin-top:14px}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.fig{background:var(--paper);padding:16px 18px;display:grid;gap:4px;align-content:start}
+.fig b{font:600 32px/1 var(--display);font-variant-numeric:tabular-nums}
+.fig span{font-size:13px;color:var(--muted)}
+.fig.key b{color:var(--weed)}
+section{display:grid;gap:14px}
+.case{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:18px;display:grid;gap:10px;min-width:0}
+.case h3{font:600 17px/1.3 var(--body);margin:0}
+.case .where{font:12px var(--mono);color:var(--muted)}
+.chart{width:100%;height:auto;display:block}
+.chart .grid{stroke:var(--rule);stroke-width:1}
+.chart .ax{fill:var(--muted);font:11px var(--mono)}
+.chart .line{fill:none;stroke:var(--weed);stroke-width:2}
+.chart .area{fill:var(--weed-soft)}
+.chart .dot{fill:var(--weed)}
+.chart .ev{fill:var(--event)}
+.legend{font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+.legend i{display:inline-block;width:12px;height:12px;vertical-align:-2px;margin-right:6px;border-radius:2px}
+.alert{border-left:4px solid var(--warn)}
+.alert .tag{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+.tablebox{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:13.5px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.fast{color:var(--warn);font-weight:500}
+.km{display:block;font:11px var(--mono);color:var(--muted)}
+tr:last-child td{border-bottom:0}
+ul{margin:0;padding-left:20px;display:grid;gap:6px;max-width:66ch}
+.offer{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:20px;display:grid;gap:12px}
+footer{font-size:13px;color:var(--muted);border-top:1px solid var(--rule);padding-top:16px}
+a{color:var(--water)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="eyebrow">Sample report · Mula-Mutha, Pune (PMC)</div>
+  <h1>Did the hyacinth clearing last?</h1>
+  <p class="lede">An independent satellite check of water hyacinth removal on the Mula-Mutha, using every clear Sentinel-2 image from November 2025 to mid-June 2026. Each 500 m stretch of river is measured about every 5 days.</p>
+  <div class="meta">Prepared by RIG Consultancy · data to 11 Nov 2026 · method v5</div>
+</header>
+
+<div class="figs">
+  <div class="fig"><b>21</b><span>probable clean-ups detected on 20 stretches</span></div>
+  <div class="fig key"><b>40 days</b><span>median time until weed was back to half its earlier level</span></div>
+  <div class="fig"><b>7 of 17</b><span>stretches re-choked to half within 30 days</span></div>
+  <div class="fig"><b>±2.8 pts</b><span>stretch-level agreement with Landsat 8/9 (r = 0.92)</span></div>
+</div>
+
+<section>
+  <h2>What the satellite saw</h2>
+  <p>A probable clean-up is a sharp drop in weed cover on one stretch that rain or a river-wide change in flow cannot explain, and that holds on the next image. Two examples:</p>
+  <div class="case">
+    <h3>Wakad: cleared in early March, back within a month</h3>
+    <div class="where">Stretch at km 5 · ward 13 Baner–Sus–Mahalunge · high confidence</div>
+    <svg viewBox="0 0 640 220" role="img" class="chart"><line x1="44" x2="628" y1="190.0" y2="190.0" class="grid"/><text x="36" y="194.0" class="ax" text-anchor="end">0%</text><line x1="44" x2="628" y1="160.3" y2="160.3" class="grid"/><text x="36" y="164.3" class="ax" text-anchor="end">10%</text><line x1="44" x2="628" y1="130.7" y2="130.7" class="grid"/><text x="36" y="134.7" class="ax" text-anchor="end">20%</text><line x1="44" x2="628" y1="101.0" y2="101.0" class="grid"/><text x="36" y="105.0" class="ax" text-anchor="end">30%</text><line x1="44" x2="628" y1="71.3" y2="71.3" class="grid"/><text x="36" y="75.3" class="ax" text-anchor="end">40%</text><line x1="44" x2="628" y1="41.7" y2="41.7" class="grid"/><text x="36" y="45.7" class="ax" text-anchor="end">50%</text><line x1="44" x2="628" y1="12.0" y2="12.0" class="grid"/><text x="36" y="16.0" class="ax" text-anchor="end">60%</text><line x1="126.7" x2="126.7" y1="12" y2="190" class="grid"/><text x="126.7" y="210" class="ax" text-anchor="middle">Feb</text><line x1="263.0" x2="263.0" y1="12" y2="190" class="grid"/><text x="263.0" y="210" class="ax" text-anchor="middle">Mar</text><line x1="413.9" x2="413.9" y1="12" y2="190" class="grid"/><text x="413.9" y="210" class="ax" text-anchor="middle">Apr</text><line x1="559.9" x2="559.9" y1="12" y2="190" class="grid"/><text x="559.9" y="210" class="ax" text-anchor="middle">May</text><rect x="253.3" y="12" width="24.3" height="178" class="ev"/><polygon points="58.6,190.0 58.6,135.7 82.9,125.9 107.3,121.5 131.6,116.4 155.9,81.1 180.3,76.1 204.6,107.2 253.3,33.1 277.6,187.9 287.3,188.8 301.9,185.3 326.3,189.7 336.0,188.5 350.6,184.1 399.3,163.3 423.6,121.5 433.3,91.8 447.9,105.7 472.3,138.7 520.9,157.7 545.3,150.2 569.6,116.1 593.9,117.9 593.9,190.0" class="area"/><polyline points="58.6,135.7 82.9,125.9 107.3,121.5 131.6,116.4 155.9,81.1 180.3,76.1 204.6,107.2 253.3,33.1 277.6,187.9 287.3,188.8 301.9,185.3 326.3,189.7 336.0,188.5 350.6,184.1 399.3,163.3 423.6,121.5 433.3,91.8 447.9,105.7 472.3,138.7 520.9,157.7 545.3,150.2 569.6,116.1 593.9,117.9" class="line"/><circle cx="58.6" cy="135.7" r="2.6" class="dot"/><circle cx="82.9" cy="125.9" r="2.6" class="dot"/><circle cx="107.3" cy="121.5" r="2.6" class="dot"/><circle cx="131.6" cy="116.4" r="2.6" class="dot"/><circle cx="155.9" cy="81.1" r="2.6" class="dot"/><circle cx="180.3" cy="76.1" r="2.6" class="dot"/><circle cx="204.6" cy="107.2" r="2.6" class="dot"/><circle cx="253.3" cy="33.1" r="2.6" class="dot"/><circle cx="277.6" cy="187.9" r="2.6" class="dot"/><circle cx="287.3" cy="188.8" r="2.6" class="dot"/><circle cx="301.9" cy="185.3" r="2.6" class="dot"/><circle cx="326.3" cy="189.7" r="2.6" class="dot"/><circle cx="336.0" cy="188.5" r="2.6" class="dot"/><circle cx="350.6" cy="184.1" r="2.6" class="dot"/><circle cx="399.3" cy="163.3" r="2.6" class="dot"/><circle cx="423.6" cy="121.5" r="2.6" class="dot"/><circle cx="433.3" cy="91.8" r="2.6" class="dot"/><circle cx="447.9" cy="105.7" r="2.6" class="dot"/><circle cx="472.3" cy="138.7" r="2.6" class="dot"/><circle cx="520.9" cy="157.7" r="2.6" class="dot"/><circle cx="545.3" cy="150.2" r="2.6" class="dot"/><circle cx="569.6" cy="116.1" r="2.6" class="dot"/><circle cx="593.9" cy="117.9" r="2.6" class="dot"/></svg>
+    <p>Cover fell from 53% on 27 Feb to under 1% on 4 Mar. By 3 April it was 23%, and 33% two days later.</p>
+  </div>
+  <div class="case">
+    <h3>Kharadi: cleared mid-April, re-covered before the monsoon</h3>
+    <div class="where">Stretch at km 54 · ward 22 Manjari Bk.–Shewalwadi · high confidence</div>
+    <svg viewBox="0 0 640 220" role="img" class="chart"><line x1="44" x2="628" y1="190.0" y2="190.0" class="grid"/><text x="36" y="194.0" class="ax" text-anchor="end">0%</text><line x1="44" x2="628" y1="160.3" y2="160.3" class="grid"/><text x="36" y="164.3" class="ax" text-anchor="end">10%</text><line x1="44" x2="628" y1="130.7" y2="130.7" class="grid"/><text x="36" y="134.7" class="ax" text-anchor="end">20%</text><line x1="44" x2="628" y1="101.0" y2="101.0" class="grid"/><text x="36" y="105.0" class="ax" text-anchor="end">30%</text><line x1="44" x2="628" y1="71.3" y2="71.3" class="grid"/><text x="36" y="75.3" class="ax" text-anchor="end">40%</text><line x1="44" x2="628" y1="41.7" y2="41.7" class="grid"/><text x="36" y="45.7" class="ax" text-anchor="end">50%</text><line x1="44" x2="628" y1="12.0" y2="12.0" class="grid"/><text x="36" y="16.0" class="ax" text-anchor="end">60%</text><line x1="44.0" x2="44.0" y1="12" y2="190" class="grid"/><text x="44.0" y="210" class="ax" text-anchor="middle">Feb</text><line x1="170.8" x2="170.8" y1="12" y2="190" class="grid"/><text x="170.8" y="210" class="ax" text-anchor="middle">Mar</text><line x1="311.1" x2="311.1" y1="12" y2="190" class="grid"/><text x="311.1" y="210" class="ax" text-anchor="middle">Apr</text><line x1="446.9" x2="446.9" y1="12" y2="190" class="grid"/><text x="446.9" y="210" class="ax" text-anchor="middle">May</text><line x1="587.3" x2="587.3" y1="12" y2="190" class="grid"/><text x="587.3" y="210" class="ax" text-anchor="middle">Jun</text><rect x="342.8" y="12" width="22.6" height="178" class="ev"/><polygon points="48.5,190.0 48.5,187.0 71.2,184.4 93.8,187.3 116.4,187.9 161.7,180.8 184.3,181.1 193.4,186.4 207.0,173.1 229.6,188.5 238.7,183.8 252.2,182.0 297.5,31.6 320.2,99.5 329.2,99.8 342.8,25.9 365.4,176.9 410.7,118.5 433.3,177.2 456.0,147.6 478.6,181.7 591.8,125.6 600.8,71.0 600.8,190.0" class="area"/><polyline points="48.5,187.0 71.2,184.4 93.8,187.3 116.4,187.9 161.7,180.8 184.3,181.1 193.4,186.4 207.0,173.1 229.6,188.5 238.7,183.8 252.2,182.0 297.5,31.6 320.2,99.5 329.2,99.8 342.8,25.9 365.4,176.9 410.7,118.5 433.3,177.2 456.0,147.6 478.6,181.7 591.8,125.6 600.8,71.0" class="line"/><circle cx="48.5" cy="187.0" r="2.6" class="dot"/><circle cx="71.2" cy="184.4" r="2.6" class="dot"/><circle cx="93.8" cy="187.3" r="2.6" class="dot"/><circle cx="116.4" cy="187.9" r="2.6" class="dot"/><circle cx="161.7" cy="180.8" r="2.6" class="dot"/><circle cx="184.3" cy="181.1" r="2.6" class="dot"/><circle cx="193.4" cy="186.4" r="2.6" class="dot"/><circle cx="207.0" cy="173.1" r="2.6" class="dot"/><circle cx="229.6" cy="188.5" r="2.6" class="dot"/><circle cx="238.7" cy="183.8" r="2.6" class="dot"/><circle cx="252.2" cy="182.0" r="2.6" class="dot"/><circle cx="297.5" cy="31.6" r="2.6" class="dot"/><circle cx="320.2" cy="99.5" r="2.6" class="dot"/><circle cx="329.2" cy="99.8" r="2.6" class="dot"/><circle cx="342.8" cy="25.9" r="2.6" class="dot"/><circle cx="365.4" cy="176.9" r="2.6" class="dot"/><circle cx="410.7" cy="118.5" r="2.6" class="dot"/><circle cx="433.3" cy="177.2" r="2.6" class="dot"/><circle cx="456.0" cy="147.6" r="2.6" class="dot"/><circle cx="478.6" cy="181.7" r="2.6" class="dot"/><circle cx="591.8" cy="125.6" r="2.6" class="dot"/><circle cx="600.8" cy="71.0" r="2.6" class="dot"/></svg>
+    <p>55% on 8 Apr, 4% on 13 Apr. Mats kept drifting back through May, and the stretch reached 40% by 4 June.</p>
+  </div>
+  <div class="legend"><span><i style="background:var(--weed)"></i>Weed cover of the stretch</span><span><i style="background:var(--event)"></i>Detected clean-up window</span></div>
+</section>
+
+<section>
+  <h2>Every probable clean-up, Nov 2025 – Jun 2026</h2>
+  <p>Medium- and high-confidence stretches only. Regrowth is the time until cover was back to half its level before the clean-up. Orange marks 30 days or less.</p>
+  <div class="tablebox"><table>
+    <thead><tr><th>Between images</th><th>Place</th><th>Ward</th><th>Cover before → after</th><th>Back to half</th></tr></thead>
+    <tbody>
+<tr><td>13 Jan–18 Jan</td><td>Blue Ridge Town<span class="km">km 2.5</span></td><td>13 Baner - Sus - Mahalunge</td><td class="n">37% → 3%</td><td class="n fast">20 days</td></tr>
+<tr><td>27 Feb–4 Mar</td><td>Wakad gaav<span class="km">km 5.0</span></td><td>13 Baner - Sus - Mahalunge</td><td class="n">53% → 1%</td><td class="n ">32 days</td></tr>
+<tr><td>27 Feb–4 Mar</td><td>Ganesh Nagar<span class="km">km 19.0</span></td><td>01 Dhanori - Vishrantwadi</td><td class="n">11% → 1%</td><td class="n ">40 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Sharda Colony<span class="km">km 9.0</span></td><td>12 Aundh - Balewadi</td><td class="n">16% → 0%</td><td class="n fast">30 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Pimple Nilakh<span class="km">km 12.0</span></td><td>12 Aundh - Balewadi</td><td class="n">12% → 0%</td><td class="n ">205 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Aundh<span class="km">km 13.0</span></td><td>11 Bopodi - Savitribai Phule Pune University</td><td class="n">13% → 1%</td><td class="n ">40 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Khadki<span class="km">km 16.0</span></td><td>11 Bopodi - Savitribai Phule Pune University</td><td class="n">15% → 3%</td><td class="n ">240 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Ganesh Nagar<span class="km">km 18.5</span></td><td>—</td><td class="n">12% → 0%</td><td class="n ">not yet</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Vasantdada Sugar Institute Colony<span class="km">km 57.5</span></td><td>22 Manjari Bk. - Shewalwadi</td><td class="n">14% → 2%</td><td class="n fast">5 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Downstream of Manjari<span class="km">km 63.0</span></td><td>—</td><td class="n">19% → 7%</td><td class="n ">not yet</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Downstream of Manjari<span class="km">km 63.5</span></td><td>—</td><td class="n">31% → 6%</td><td class="n ">50 days</td></tr>
+<tr><td>9 Mar–14 Mar</td><td>Downstream of Manjari<span class="km">km 64.0</span></td><td>—</td><td class="n">87% → 2%</td><td class="n ">not yet</td></tr>
+<tr><td>5 Apr–8 Apr</td><td>Mundhwa<span class="km">km 51.0</span></td><td>21 Koregaon park - Mundhwa</td><td class="n">20% → 1%</td><td class="n fast">25 days</td></tr>
+<tr><td>5 Apr–8 Apr</td><td>Mundhwa<span class="km">km 51.5</span></td><td>06 Vadgaon Sheri - Ramwadi</td><td class="n">54% → 5%</td><td class="n ">not yet</td></tr>
+<tr><td>8 Apr–13 Apr</td><td>Kharadi<span class="km">km 53.0</span></td><td>22 Manjari Bk. - Shewalwadi</td><td class="n">15% → 4%</td><td class="n fast">15 days</td></tr>
+<tr><td>8 Apr–13 Apr</td><td>Kharadi<span class="km">km 54.0</span></td><td>22 Manjari Bk. - Shewalwadi</td><td class="n">55% → 4%</td><td class="n ">52 days</td></tr>
+<tr><td>8 Apr–13 Apr</td><td>Kharadi<span class="km">km 54.5</span></td><td>22 Manjari Bk. - Shewalwadi</td><td class="n">14% → 1%</td><td class="n ">52 days</td></tr>
+<tr><td>8 Apr–13 Apr</td><td>Manjari<span class="km">km 59.0</span></td><td>22 Manjari Bk. - Shewalwadi</td><td class="n">32% → 3%</td><td class="n fast">20 days</td></tr>
+<tr><td>13 Apr–23 Apr</td><td>Blue Ridge Town<span class="km">km 1.0</span></td><td>—</td><td class="n">17% → 5%</td><td class="n fast">10 days</td></tr>
+<tr><td>13 Apr–23 Apr</td><td>Sharda Colony<span class="km">km 9.0</span></td><td>12 Aundh - Balewadi</td><td class="n">12% → 0%</td><td class="n ">42 days</td></tr>
+<tr><td>13 Apr–23 Apr</td><td>Vishrantwadi<span class="km">km 20.0</span></td><td>01 Dhanori - Vishrantwadi</td><td class="n">12% → 1%</td><td class="n ">40 days</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="case alert">
+    <div class="tag">Live alert · 9 Nov 2026</div>
+    <h3>Khadki: a new mat has arrived</h3>
+    <div class="where">Stretch at km 16 · ward 11 Bopodi–SPPU · 3.6 ha of river · high confidence</div>
+    <svg viewBox="0 0 640 220" role="img" class="chart"><line x1="44" x2="628" y1="190.0" y2="190.0" class="grid"/><text x="36" y="194.0" class="ax" text-anchor="end">0%</text><line x1="44" x2="628" y1="145.5" y2="145.5" class="grid"/><text x="36" y="149.5" class="ax" text-anchor="end">20%</text><line x1="44" x2="628" y1="101.0" y2="101.0" class="grid"/><text x="36" y="105.0" class="ax" text-anchor="end">40%</text><line x1="44" x2="628" y1="56.5" y2="56.5" class="grid"/><text x="36" y="60.5" class="ax" text-anchor="end">60%</text><line x1="44" x2="628" y1="12.0" y2="12.0" class="grid"/><text x="36" y="16.0" class="ax" text-anchor="end">80%</text><line x1="44.0" x2="44.0" y1="12" y2="190" class="grid"/><text x="44.0" y="210" class="ax" text-anchor="middle">Oct</text><line x1="475.0" x2="475.0" y1="12" y2="190" class="grid"/><text x="475.0" y="210" class="ax" text-anchor="middle">Nov</text><polygon points="57.9,190.0 57.9,189.6 99.6,188.7 169.1,184.7 238.7,182.0 308.2,174.4 377.7,183.3 447.2,150.6 516.8,177.1 586.3,28.2 614.1,60.7 614.1,190.0" class="area"/><polyline points="57.9,189.6 99.6,188.7 169.1,184.7 238.7,182.0 308.2,174.4 377.7,183.3 447.2,150.6 516.8,177.1 586.3,28.2 614.1,60.7" class="line"/><circle cx="57.9" cy="189.6" r="2.6" class="dot"/><circle cx="99.6" cy="188.7" r="2.6" class="dot"/><circle cx="169.1" cy="184.7" r="2.6" class="dot"/><circle cx="238.7" cy="182.0" r="2.6" class="dot"/><circle cx="308.2" cy="174.4" r="2.6" class="dot"/><circle cx="377.7" cy="183.3" r="2.6" class="dot"/><circle cx="447.2" cy="150.6" r="2.6" class="dot"/><circle cx="516.8" cy="177.1" r="2.6" class="dot"/><circle cx="586.3" cy="28.2" r="2.6" class="dot"/><circle cx="614.1" cy="60.7" r="2.6" class="dot"/></svg>
+    <p>Cover jumped from 6% on 4 Nov to 73% on 9 Nov and was still 58% on 11 Nov. A subscriber gets an alert like this on the day the image is processed.</p>
+  </div>
+</section>
+
+<section>
+  <h2>How to read this</h2>
+  <ul>
+    <li>Images are 10 m Sentinel-2 pixels. Weed is measured as the covered share of each pixel, so small mats still count.</li>
+    <li>A drop can also come from a mat drifting downstream. A matching rise on the next stretch down points to drift rather than removal.</li>
+    <li>Cloudy, hazy or monsoon images are left out. Low-confidence stretches (narrow channel, many bank pixels) are excluded here.</li>
+    <li>Figures are checked monthly against Landsat 8/9 and yearly against weed patches planted into real images.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="offer">
+    <h2>What a monitoring contract adds</h2>
+    <ul>
+      <li>Stretches matched to your clearing contracts and work orders, with before and after figures for each.</li>
+      <li>A monthly report per ward or zone, in English and Marathi.</li>
+      <li>Alerts when a stretch fills up or a cleared stretch re-chokes.</li>
+      <li>Full history from 2017 for planning and budgets.</li>
+    </ul>
+    <p>Free live dashboard: <a href="https://rig-consultancy.github.io/river-watch/">rig-consultancy.github.io/river-watch</a></p>
+  </div>
+</section>
+
+<footer>Contains modified Copernicus Sentinel data 2025–2026, processed by RIG Consultancy. Rainfall used to rule out rain-driven drops.</footer>
+</div>
+
+</body>
+</html>
