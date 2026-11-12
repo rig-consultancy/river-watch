@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use or refer to River Watch, please cite it as below."
+title: "River Watch: automated Sentinel-2 monitoring of water hyacinth and muddy water on Pune's rivers"
+type: software
+authors:
+  - name: "RIG Consultancy"
+repository-code: "https://github.com/rig-consultancy/river-watch"
+license-url: "https://github.com/rig-consultancy/river-watch/blob/main/LICENSE"
+abstract: >-
+  Fully automated monitoring of floating vegetation (water hyacinth) and muddy water on the
+  Mula-Mutha, Pawana and Indrayani rivers from Sentinel-2 L2A images, from 2017 onward. Weed is
+  measured as the covered share of each 10 m pixel, the river area is derived from the image
+  history, and a post-monsoon flood test separates floating weed from rooted vegetation. Figures
+  are cross-checked against Landsat 8/9 and a planted-weed test.
+keywords:
+  - water hyacinth
+  - Sentinel-2
+  - remote sensing
+  - river monitoring
+  - Pune
+version: "0.1.0"
+date-released: "2026-11-12"
