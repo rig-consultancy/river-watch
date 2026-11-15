@@ -5,8 +5,22 @@
   <subtitle>Weed above the alert level, sudden spread and probable clean-ups on Pune's rivers, from Sentinel-2</subtitle>
   <link href="https://rig-consultancy.github.io/river-watch/"/>
   <link rel="self" href="https://rig-consultancy.github.io/river-watch/feed.xml"/>
-  <updated>2026-11-09T00:00:00Z</updated>
+  <updated>2026-11-11T00:00:00Z</updated>
   <author><name>River Watch</name></author>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/8/2026-11-11</id>
+    <title>Mula-Mutha (Pune), Near Mhalunge: weed above 15% (1.0% → 18.2%)</title>
+    <updated>2026-11-11T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=9"/>
+    <summary>weed above 15% (1.0% → 18.2%) (2026-11-09 to 2026-11-11). मुळा-मुठा (पुणे), म्हाळुंगे जवळ: जलपर्णी 15% पेक्षा जास्त (1.0% → 18.2%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/7/2026-11-11</id>
+    <title>Mula-Mutha (Pune), Near Mhalunge: weed above 15% (0.9% → 15.9%)</title>
+    <updated>2026-11-11T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=8"/>
+    <summary>weed above 15% (0.9% → 15.9%) (2026-11-09 to 2026-11-11). मुळा-मुठा (पुणे), म्हाळुंगे जवळ: जलपर्णी 15% पेक्षा जास्त (0.9% → 15.9%).</summary>
+  </entry>
   <entry>
     <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/cleanup/33/2026-11-09</id>
     <title>Mula-Mutha (Pune), Near Khadki: probable clean-up (15.0% → 3.4%)</title>
