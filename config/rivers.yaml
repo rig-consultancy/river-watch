@@ -131,6 +131,17 @@ alerts:
   days: 120
   spread_pts: 10
 
+# Ward league table on the dashboard. A ward's figure needs min_seen of its river area seen; "now"
+# uses readings at most now_days older than the newest image, "a year ago" the reading closest to
+# a year earlier within year_window days; the 12-month average needs min_images images.
+wards:
+  min_seen: 0.5
+  now_days: 30
+  year_window: 21
+  min_images: 10
+  min_regrowth: 3            # clean-ups needed for a "back to half in" median
+  ranked_reliable: 0.5       # ranked only with this share of river area in stretches not low-confidence
+
 # Municipal corporations: each stretch is tagged with the one it runs through (a stretch whose
 # banks fall in both is a border stretch and counts towards both). See data/regions/README.md.
 regions:

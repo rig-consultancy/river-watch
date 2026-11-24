@@ -98,6 +98,24 @@
     <p class="hint" id="regions-note" data-i18n="regions_note">Stretches on the PMC–PCMC border count towards both.</p>
   </section>
 
+  <section class="panel wards-panel" id="wards" hidden>
+    <div class="panel-head"><h2 data-i18n="w_title">Ward league table</h2>
+      <div class="seg" role="group" aria-label="Sort wards">
+        <button type="button" data-wsort="now" class="on" data-i18n="w_by_now">Weed now</button>
+        <button type="button" data-wsort="change" data-i18n="w_by_change">Change in a year</button>
+        <button type="button" data-wsort="avg_12m" data-i18n="w_by_avg">12-month average</button>
+        <button type="button" data-wsort="cleanups_12m" data-i18n="w_by_cleanups">Clean-ups</button>
+      </div>
+    </div>
+    <div class="table-scroll"><table><thead><tr>
+      <th>#</th><th data-i18n="w_ward">Ward</th><th data-i18n="w_now">Weed now</th><th data-i18n="w_last_year">A year ago</th>
+      <th data-i18n="w_change">Change</th><th data-i18n="w_avg">12-month average</th><th data-i18n="w_cleanups">Probable clean-ups, 12 months</th>
+      <th data-i18n="w_regrowth">Weed back to half in</th><th data-i18n="w_worst">Worst stretch now</th>
+    </tr></thead><tbody></tbody></table></div>
+    <p class="hint"><span data-i18n="w_note">Weed cover is weighted by river area; a ward needs half its river seen for a figure. A stretch on a corporation border counts in the ward on each side. Select a ward to zoom to it.</span>
+      <button type="button" class="linkish" id="dl-wards" data-i18n="w_download">Download (CSV)</button></p>
+  </section>
+
   <section class="charts">
     <div class="panel">
       <div class="panel-head"><h2 data-i18n="c_hy">Hyacinth cover over time</h2><span class="unit" data-i18n="u_river">% of river surface</span></div>

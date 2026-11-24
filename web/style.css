@@ -190,6 +190,17 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .regions-panel .table-scroll { margin-top: 0; }
 .regions-panel tr.on td { background: var(--grid); }
 .regions-panel .hint { margin: 8px 0 0; }
+.wards-panel { margin-bottom: 16px; }
+.wards-panel .panel-head { flex-wrap: wrap; gap: 8px; }
+.wards-panel .table-scroll { margin-top: 0; max-height: 480px; }
+.wards-panel tr.on td { background: var(--grid); }
+.wards-panel tr.unranked td { color: var(--text-muted); }
+.wards-panel td small { color: var(--text-muted); }
+.wards-panel td:nth-child(2), .wards-panel th:nth-child(2) { text-align: left; }
+.wards-panel td:nth-child(2) { min-width: 150px; max-width: 220px; white-space: normal; }
+.wards-panel td:nth-child(2) .linkish { text-align: left; white-space: normal; }
+.wards-panel td small { display: block; }
+.wards-panel .hint { margin: 8px 0 0; }
 .linkish {
   font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
 }

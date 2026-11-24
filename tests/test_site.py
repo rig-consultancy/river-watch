@@ -156,6 +156,14 @@ def test_published_river_data_is_consistent(river):
     flagged = [f["properties"] for f in d["segments"]["features"] if f["properties"].get("muddier")]
     assert all(p["confidence"] != "low" and p["dry_muddy"]["n"] >= 30 for p in flagged)
 
+    for w in d["wards"]:
+        assert w["segments"] and all(0 <= k < n for k in w["segments"])
+        assert all(v is None or 0 <= v <= 100 for v in (w["now"], w["last_year"], w["avg_12m"]))
+        assert not w["ranked"] or (w["reliable"] >= 0.5 and w["now"] is not None)
+        assert w["cleanups_12m"] <= w["cleanups"]
+        props = d["segments"]["features"]
+        assert all(w["ward"] in props[k]["properties"]["wards"] for k in w["segments"])
+
     u = d["uncertainty"]
     assert u["river_noise_pts"] > 0 and u["one_off_jumps"] < 0.05 * u["readings"]
     look = d["outlook"]

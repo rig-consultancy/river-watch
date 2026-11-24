@@ -101,6 +101,11 @@ tests/                      uv run pytest: calculations and the published data
   clean-up, in the last 120 days (not low-confidence stretches or unconfirmed jumps). Shown in the
   dashboard's Alerts tab and published as an Atom feed, `web/feed.xml`, for feed readers or
   feed-to-email services; no account or key is needed.
+- **Ward league table:** every PMC/PCMC ward along the river (`ward_table` in run.py), sortable by
+  weed now, change from a year ago, 12-month average and probable clean-ups in the last 12 months,
+  with the median days until weed was back at half (needs 3+ clean-ups). Figures are weighted by
+  river area and need half the ward's river seen; wards mostly made of low-confidence stretches are
+  listed but not ranked. Selecting a ward zooms the map to it; the table downloads as CSV.
 - **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
   month's average and range, change, river map, worst stretches, drops and data quality.
 - **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).

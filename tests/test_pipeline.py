@@ -227,3 +227,27 @@ def test_muddier_stretch_and_rain_check():
     assert m[0]["share_above"] == 0.0
     rc = run.muddy_rain_check(dates, history, rain, dry, cfg)
     assert rc["share_muddier"] == 1.0 and rc["median_change"] == pytest.approx(0.05)
+
+
+def test_ward_table_weights_by_area_and_needs_enough_seen():
+    dates = ["2025-03-01", "2025-09-20", "2026-02-20", "2026-03-01"]
+    hy = np.array([[10.0, 30.0, 5.0],
+                   [np.nan, np.nan, np.nan],
+                   [20.0, 2.0, 5.0],
+                   [20.0, np.nan, 5.0]])
+    seg_px = np.array([100, 300, 100])
+    regions = [(["pmc"], ["A"]), (["pmc", "pcmc"], ["A", "Z"]), (["pcmc"], ["Z"])]  # stretch 1 on the border
+    conf = {0: ("high", []), 1: ("low", []), 2: ("high", [])}
+    events = [{"segment": 0, "cause": "removal", "to": "2026-02-20", "regrowth_days": 30},
+              {"segment": 0, "cause": "rain", "to": "2026-02-20", "regrowth_days": 5}]
+    cfg = {"min_seen": 0.5, "now_days": 30, "year_window": 21, "min_images": 2, "min_regrowth": 1,
+           "ranked_reliable": 0.5, "segment_km": 0.5}
+    rows = {(r["region"], r["ward"]): r for r in run.ward_table(dates, hy, seg_px, regions, conf, events, cfg)}
+    a, z = rows[("pmc", "A")], rows[("pcmc", "Z")]
+    # Now: stretch 0 at 20% (100 px), stretch 1 last seen 2026-02-20 at 2% (300 px), both within 30 days.
+    assert a["now"] == pytest.approx((20 * 100 + 2 * 300) / 400, abs=0.05)
+    assert a["last_year"] == pytest.approx((10 * 100 + 30 * 300) / 400, abs=0.05)  # 2025-03-01 readings
+    assert a["cleanups"] == 1 and a["cleanups_12m"] == 1 and a["regrowth_days"] == 30  # rain drops don't count
+    assert a["reliable"] == 0.25 and a["ranked"] is False   # most of its river is the low-confidence stretch
+    assert z["segments"] == [1, 2] and z["ranked"] is False
+    assert rows[("pmc", "A")]["worst"] == 0

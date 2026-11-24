@@ -937,6 +937,70 @@ def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct):
     return sorted(out, key=lambda a: (a["date"], a["segment"], a["type"]), reverse=True)
 
 
+def ward_table(dates, hy, seg_px, regions, conf, events, cfg):
+    """One row per municipal ward the river runs through, for the dashboard's league table.
+
+    A stretch counts towards the ward of each corporation it touches (p.wards[i] goes with
+    p.regions[i]). Figures are weighted by river area and need min_seen of the ward's river area
+    seen, else they are None:
+      now: each stretch's latest reading if within now_days of the newest image;
+      last_year: each stretch's reading closest to a year before the newest image (within year_window days);
+      avg_12m: the average over the last 12 months of the ward's cover on each image;
+      cleanups: probable clean-ups ever / in the last 12 months, and the median days until weed was
+      back at half its earlier level (over those where that was seen, at least min_regrowth);
+      reliable: share of the ward's river area in stretches that are not low-confidence.
+    """
+    t = np.array([date.fromisoformat(d).toordinal() for d in dates])
+    last, year_ago = t[-1], t[-1] - 365
+    wards = defaultdict(list)
+    for k, (ids, names) in enumerate(regions):
+        for rid, name in zip(ids, names):
+            wards[(rid, name)].append(k)
+
+    def weighted(vals, ks):
+        """Area-weighted mean of vals (NaN = not seen) over stretches ks, or None if too little was seen."""
+        w = seg_px[ks].astype(float)
+        seen = np.isfinite(vals)
+        if not w.sum() or w[seen].sum() < cfg["min_seen"] * w.sum():
+            return None
+        return round(float(np.sum(vals[seen] * w[seen]) / w[seen].sum()), 1)
+
+    rows = []
+    for (rid, name), ks in wards.items():
+        ks = np.array(ks)
+        now = np.full(len(ks), np.nan)
+        before = np.full(len(ks), np.nan)
+        for j, k in enumerate(ks):
+            seen = np.nonzero(np.isfinite(hy[:, k]))[0]
+            if len(seen) and last - t[seen[-1]] <= cfg["now_days"]:
+                now[j] = hy[seen[-1], k]
+            near = seen[np.abs(t[seen] - year_ago) <= cfg["year_window"]]
+            if len(near):
+                before[j] = hy[near[np.argmin(np.abs(t[near] - year_ago))], k]
+        recent = np.nonzero(t > year_ago)[0]
+        per_image = [weighted(hy[i, ks], ks) for i in recent]
+        per_image = [v for v in per_image if v is not None]
+        mine = [e for e in events if e["cause"] == "removal" and e["segment"] in set(ks.tolist())]
+        regrow = [e["regrowth_days"] for e in mine if e["regrowth_days"] is not None]
+        latest = {int(k): float(now[j]) for j, k in enumerate(ks) if np.isfinite(now[j])}
+        good = [k for k in ks if conf.get(int(k), ("low",))[0] != "low"]
+        rows.append({
+            "region": rid, "ward": name, "segments": [int(k) for k in ks],
+            "km": round(len(ks) * cfg["segment_km"], 1),
+            "now": weighted(now, ks), "last_year": weighted(before, ks),
+            "avg_12m": round(float(np.mean(per_image)), 1) if len(per_image) >= cfg["min_images"] else None,
+            "cleanups": len(mine),
+            "cleanups_12m": sum(1 for e in mine if date.fromisoformat(e["to"]).toordinal() > year_ago),
+            # A median of one or two clean-ups says little: needs min_regrowth of them.
+            "regrowth_days": int(np.median(regrow)) if len(regrow) >= cfg["min_regrowth"] else None,
+            "regrowth_n": len(regrow),
+            "worst": max(latest, key=latest.get) if latest else None,
+            "reliable": round(float(seg_px[good].sum() / max(seg_px[ks].sum(), 1)), 2),
+        })
+        rows[-1]["ranked"] = rows[-1]["reliable"] >= cfg["ranked_reliable"] and rows[-1]["now"] is not None
+    return sorted(rows, key=lambda r: (r["region"], r["segments"][0]))
+
+
 def write_web(river, cfg, segments, history, area):
     det, rad, qual = river_det(river, cfg), cfg.get("radar"), cfg["quality"]
     seg_px = area["px"]
@@ -1096,6 +1160,9 @@ def write_web(river, cfg, segments, history, area):
         "segments": {"type": "FeatureCollection", "features": features},
         "series": series,
         "regions": region_out,
+        # Every ward along the river with its weed now, a year ago, over 12 months and its clean-ups.
+        "wards": ward_table(dates, hy, seg_px, regions, conf, events,
+                            {**cfg["wards"], "segment_km": det["segment_length_m"] / 1000}) if cfg.get("wards") else [],
         # Sharp, lasting drops per stretch with their likely cause (see cleanup_events).
         "cleanup_events": events,
         # Recent changes worth telling someone about; also published as web/feed.xml.

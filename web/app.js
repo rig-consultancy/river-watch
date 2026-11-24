@@ -593,6 +593,43 @@ function drawRegions() {
     b.addEventListener("click", () => selectSegment(+b.dataset.seg, true)));
 }
 
+// ---------- ward league table ----------
+let wardSort = "now";
+const wardChange = (w) => (w.now == null || w.last_year == null ? null : +(w.now - w.last_year).toFixed(1));
+function wardRows() {
+  const rows = (current.wards || []).filter((w) => state.region === "all" || w.region === state.region)
+    .map((w) => ({ ...w, change: wardChange(w) }));
+  const val = (w) => w[wardSort];
+  // Ranked wards first, highest first; low-confidence wards and missing figures after.
+  return rows.sort((a, b) => (b.ranked - a.ranked) || ((val(b) ?? -1e9) - (val(a) ?? -1e9)));
+}
+function drawWards() {
+  const panel = $("wards"), rows = wardRows();
+  panel.hidden = !rows.length;
+  if (!rows.length) return;
+  document.querySelectorAll("[data-wsort]").forEach((b) => b.classList.toggle("on", b.dataset.wsort === wardSort));
+  const props = new Map(current.segments.features.map((f) => [f.properties.id, f.properties]));
+  const pct = (v) => (v == null ? "–" : `${nf(v)}%`);
+  let rank = 0;
+  panel.querySelector("tbody").innerHTML = rows.map((w) => {
+    const key = `${w.region}:${w.ward}`, worst = w.worst != null ? props.get(w.worst) : null;
+    const corp = state.region === "all" ? ` <small>${regionName(current.regions.find((r) => r.id === w.region))}</small>` : "";
+    const ch = w.change == null ? "–" : `<span class="${w.change > 0 ? "delta-up" : w.change < 0 ? "delta-down" : ""}">${w.change > 0 ? "+" : ""}${t("pts", { v: nf(w.change) })}</span>`;
+    return `<tr class="${state.ward === key ? "on" : ""} ${w.ranked ? "" : "unranked"}" data-ward="${key.replace(/"/g, "&quot;")}">
+      <td>${w.ranked ? nf(++rank, 0) : "–"}</td>
+      <td><button type="button" class="linkish">${w.ward}</button>${corp}${w.ranked ? "" : ` <small class="conf-why">${t("w_low_conf")}</small>`}</td>
+      <td><strong>${pct(w.now)}</strong></td><td>${pct(w.last_year)}</td><td>${ch}</td><td>${pct(w.avg_12m)}</td>
+      <td>${nf(w.cleanups_12m, 0)}</td>
+      <td>${w.regrowth_days == null ? "–" : t("w_days", { n: nf(w.regrowth_days, 0) }) + `<small>${t("w_days_of", { c: nf(w.regrowth_n, 0) })}</small>`}</td>
+      <td>${worst ? `<button type="button" class="linkish" data-seg="${worst.id}">${segName(worst)}</button>` : "–"}</td></tr>`;
+  }).join("");
+  panel.querySelectorAll("tr[data-ward] td:nth-child(2) button").forEach((b) => b.addEventListener("click", () => {
+    setWard(b.closest("tr").dataset.ward);
+    $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
+  panel.querySelectorAll("button[data-seg]").forEach((b) => b.addEventListener("click", () => selectSegment(+b.dataset.seg, true)));
+}
+
 // ---------- charts + table ----------
 function drawCharts() {
   if (!current) return;
@@ -782,6 +819,7 @@ function fillWardSelect() {
 
 function setWard(w) {
   state.ward = w;
+  $("ward").value = w;
   selected = null;
   syncUrl();
   drawDetail();
@@ -832,6 +870,7 @@ function renderAll(fit) {
   document.querySelectorAll("[data-list]").forEach((b) => b.classList.toggle("on", b.dataset.list === listMode));
   drawList();
   drawRegions();
+  drawWards();
   drawCharts();
   drawTable();
   drawChecks();
@@ -895,6 +934,13 @@ async function main() {
   initDownloads();
   document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => setLang(b.dataset.lang)));
   document.querySelectorAll("[data-list]").forEach((b) => b.addEventListener("click", () => { listMode = b.dataset.list; renderAll(false); }));
+  document.querySelectorAll("[data-wsort]").forEach((b) => b.addEventListener("click", () => { wardSort = b.dataset.wsort; drawWards(); }));
+  $("dl-wards").addEventListener("click", () => download(`${current.river.id}-wards.csv`,
+    ["rank_by_" + wardSort, "corporation", "ward", "river_km", "weed_now_pct", "a_year_ago_pct", "change_pts", "avg_12_months_pct",
+      "probable_cleanups_12_months", "probable_cleanups_since_2017", "median_days_back_to_half", "cleanups_with_regrowth_seen",
+      "share_reliable", "worst_stretch"],
+    wardRows().map((w, i) => [w.ranked ? i + 1 : "", w.region.toUpperCase(), w.ward, w.km, w.now, w.last_year, w.change, w.avg_12m,
+      w.cleanups_12m, w.cleanups, w.regrowth_days, w.regrowth_n, w.reliable, w.worst == null ? "" : w.worst + 1])));
   $("region").addEventListener("change", (e) => setRegion(e.target.value));
   $("ward").addEventListener("change", (e) => setWard(e.target.value));
   $("d-close").addEventListener("click", () => { selected = null; syncUrl(); drawDetail(); });
