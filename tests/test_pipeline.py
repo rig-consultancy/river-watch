@@ -262,3 +262,35 @@ def test_ward_table_weights_by_area_and_needs_enough_seen():
     assert a["reliable"] == 0.25 and a["ranked"] is False   # most of its river is the low-confidence stretch
     assert z["segments"] == [1, 2] and z["ranked"] is False
     assert rows[("pmc", "A")]["worst"] == 0
+
+
+def test_scene_ids_are_the_same_from_either_catalogue():
+    from types import SimpleNamespace
+    pc = SimpleNamespace(collection_id="sentinel-2-l2a", id="S2A_MSIL2A_20261111T053231_R105_T43QCA_20261111T102104",
+                         properties={})
+    es = SimpleNamespace(collection_id=run.ES_COLLECTION, id="S2A_T43QCA_20261111T053939_L2A",
+                         properties={"s2:product_uri": "S2A_MSIL2A_20261111T053231_N0513_R105_T43QCA_20261111T102104.SAFE"})
+    assert run.scene_id(es) == run.scene_id(pc) == pc.id
+    assert run.S2_ASSETS["es"].keys() == run.S2_ASSETS["pc"].keys()
+
+
+def test_inner_pixels_keep_only_20m_inside():
+    river = np.zeros((12, 12), bool)
+    river[2:10, 2:10] = True  # 80 m square
+    inner = run.inner_pixels(river)
+    assert inner.sum() == 16 and inner[4:8, 4:8].all()  # 2 pixels (20 m) in from every edge
+
+
+def test_landsat_standin_line_and_out_of_sample_error(tmp_path, monkeypatch):
+    rng = np.random.default_rng(3)
+    dates = [f"2026-0{m}-{d:02d}" for m in range(1, 6) for d in (5, 15, 25)] * 2
+    dates = sorted(set(f"{d[:8]}{i:02d}" for i, d in enumerate(dates, 1) if i <= 28))
+    s2 = rng.uniform(0, 30, len(dates))
+    pairs = [{"date": d, "landsat_pct": round(float(v - 3 + rng.normal(0, 1)), 2)} for d, v in zip(dates, s2)]
+    (tmp_path / "data/validation").mkdir(parents=True)
+    (tmp_path / "data/validation/x-landsat.json").write_text(json.dumps({"pairs": pairs}))
+    monkeypatch.setattr(run, "ROOT", tmp_path)
+    history = {"dates": {d: {"hyacinth_pct": float(v)} for d, v in zip(dates, s2)}}
+    got = run.landsat_standin("x", history, dates, {"min_correlation": 0.7})
+    assert got["used"] and got["slope"] == pytest.approx(1, abs=0.05) and got["intercept"] == pytest.approx(3, abs=0.6)
+    assert 0.5 < got["error80"] < 2.5  # noise of 1 point, measured out of sample

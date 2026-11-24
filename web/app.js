@@ -529,7 +529,11 @@ function drawTiles() {
   const now = rows[rows.length - 1];
   $("t-pct").textContent = now ? `${nf(now.hyacinth_pct)}%` : "–";
   const radarLast = current.radar?.series.at(-1);
+  // Sentinel-2 has nothing newer but Landsat has: its rough river-wide estimate, labelled as such.
+  const gap = !reg ? (current.gap_fill || []).at(-1) : null;
+  if (gap) $("t-pct").textContent = `~${nf(gap.hyacinth_pct)}%`;
   $("t-pct-note").textContent = reg ? t("n_pct_region", { area: regionName(reg) })
+    : gap ? t("n_pct_landsat", { date: fmtDate(gap.date), lo: nf(gap.range[0]), hi: nf(gap.range[1]), s2: fmtDate(last.date) })
     : radarLast && radarLast.date > last.date
       ? t("n_pct_radar", { date: fmtDate(last.date), rdate: fmtDate(radarLast.date), rpct: nf(radarLast.hyacinth_pct) })
       : now?.range ? t("n_pct_range", { lo: nf(now.range[0]), hi: nf(now.range[1]) }) : t("n_pct");
@@ -648,6 +652,9 @@ function drawCharts() {
   if (lc?.series && !reg) {
     hy.push({ name: t("l_landsat"), cls: "ls", rows: lc.series, key: "landsat_pct", dotsOnly: true });
   }
+  if (current.gap_fill?.length && !reg) {
+    hy.push({ name: t("l_gap"), cls: "gap", rows: current.gap_fill, key: "hyacinth_pct", dotsOnly: true, band: "range" });
+  }
   lineChart($("c-hy"), hy, t("c_hy"));
   const tu = [optical("turbid_pct")];
   if (reg) {
@@ -683,7 +690,10 @@ function drawChecks() {
   const cards = []; // [title, [[label, value], ...]]
   if (lc) cards.push([t("x_landsat"), [[t("x_pairs"), nf(lc.pairs, 0)], [t("x_dir"), dir(lc.direction)],
     [t("x_diffh"), t("x_diff_ls", { d: nf(lc.river_mae_pts), b: (lc.river_bias_pts > 0 ? "+" : "") + nf(lc.river_bias_pts) })],
-    [t("x_checked"), lc.checked ? fmtDate(lc.checked) : "–"]]]);
+    [t("x_checked"), lc.checked ? fmtDate(lc.checked) : "–"],
+    ...(current.landsat_standin ? [[t("x_gap"), current.landsat_standin.used
+      ? t("x_gap_used", { e: nf(current.landsat_standin.error80), n: nf(current.landsat_standin.pairs, 0) })
+      : `${t("x_gap_not", { r: nf(current.landsat_standin.correlation, 2) })}`]] : [])]]);
   if (rad) cards.push([t("x_radar"), [[t("x_pairs"), nf(rad.pairs, 0)], [t("x_dir"), dir(rad.direction)],
     [t("x_diffh"), t("x_diff", { d: nf(rad.mae_pct) })], [t("x_checked"), t("x_every_run")]]]);
   if (syn) {
@@ -846,7 +856,9 @@ function ago(iso) {
 // has not for 36 hours it has stopped. Otherwise an old image just means none newer was published
 // (or it was cloudy): say which, rather than show old figures as current or cry wolf.
 function drawStatus() {
+  const gap = (current.gap_fill || []).at(-1);
   $("meta").textContent = t("meta", { date: fmtDate(current.latest_date), n: nf(current.series.length, 0) }) +
+    (gap ? " · " + t("meta_landsat", { date: fmtDate(gap.date) }) : "") +
     (status?.checked ? " · " + t("checked", { ago: ago(status.checked) }) : "");
   const age = Math.floor((Date.now() - toT(current.latest_date)) / dayMs), month = new Date().getMonth() + 1;
   const checkedH = status?.checked ? (Date.now() - new Date(status.checked).getTime()) / 36e5 : null;

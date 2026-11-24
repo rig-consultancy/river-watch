@@ -167,6 +167,11 @@ def test_published_river_data_is_consistent(river):
         props = d["segments"]["features"]
         assert all(w["ward"] in props[k]["properties"]["wards"] for k in w["segments"])
 
+    st = d["landsat_standin"]
+    assert st is None or st["used"] == (st["correlation"] >= 0.7)
+    for g in d["gap_fill"]:  # Landsat only after the newest Sentinel-2 image, only where it tracks well
+        assert st["used"] and g["date"] > d["latest_date"] and g["range"][0] <= g["hyacinth_pct"] <= g["range"][1]
+
     u = d["uncertainty"]
     assert u["river_noise_pts"] > 0 and u["one_off_jumps"] < 0.05 * u["readings"]
     look = d["outlook"]

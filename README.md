@@ -109,6 +109,16 @@ tests/                      uv run pytest: calculations and the published data
   with the median days until weed was back at half (needs 3+ clean-ups). Figures are weighted by
   river area and need half the ward's river seen; wards mostly made of low-confidence stretches are
   listed but not ranked. Selecting a ward zooms the map to it; the table downloads as CSV.
+- **Two catalogues:** Sentinel-2 images come from Planetary Computer, plus any day only Element 84's
+  Earth Search (Amazon) has, or all of them when Planetary Computer is down (`search` in run.py).
+  Both serve the same ESA files: on the same image every index matches exactly. Images are stored
+  under ESA's product name either way, so photo links keep working.
+- **Landsat between Sentinel-2 images:** when Landsat 8/9 has an image newer than the newest
+  Sentinel-2 one, it is measured over the inner river pixels (at least 20 m from the edge; the edges
+  would add 5-18 points of bank plants) and turned into a river-wide estimate by a straight line
+  fitted to all past pairs. Its error, measured out of sample, is shown as the range: ±4.2 points on
+  the Mula-Mutha, ±8.9 on the Indrayani; not used on the Pawana (correlation 0.51). It shows in
+  the cover tile and chart, labelled, until Sentinel-2 catches up; nothing else uses it.
 - **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
   month's average and range, change, river map, worst stretches, drops and data quality.
 - **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).

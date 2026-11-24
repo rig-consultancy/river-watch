@@ -33,7 +33,7 @@ from shapely import STRtree, points
 import rasterio
 
 from run import (ROOT, RES, classify, confidence, cover_fraction, day_pixels, load_river, make_grid,
-                 make_segments, reject_dates, river_area, river_det, search, water_ndvi)
+                 make_segments, reject_dates, river_area, river_det, scene_id, search, water_ndvi)
 
 SUB = 5  # 2 m sub-pixels per 10 m pixel side
 
@@ -71,7 +71,7 @@ def pixels_on(river, d, hist, det, tf, w, h, mask):
     cache may not have them)."""
     items = [] if (ROOT / f"data/cache/{river['id']}/{d}.npz").exists() else [
         s for s in search(river, date.fromisoformat(d), date.fromisoformat(d), det).get(d, [])
-        if s.id in hist["dates"][d]["scenes"]]
+        if scene_id(s) in hist["dates"][d]["scenes"]]
     return day_pixels(river["id"], d, items, tf, w, h, mask)
 
 

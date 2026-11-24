@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import yaml
 
-from run import ROOT, search
+from run import ROOT, landsat_scenes, search
 
 
 def main():
@@ -28,6 +28,14 @@ def main():
         seen = set(hist["dates"]) | set(hist.get("skipped", []))
         found = search(river, today - timedelta(days=det["lookback_days"]), today, det)
         new[river["id"]] = sorted(d for d in found if d not in seen and date.fromisoformat(d) <= today)
+        # Landsat images after the newest Sentinel-2 one fill the gap (update_landsat_gap in run.py).
+        newest = max(hist["dates"], default="")
+        try:
+            new[river["id"]] += sorted(f"{d} (Landsat)" for d in {it.datetime.date().isoformat() for it in
+                                       landsat_scenes(river, newest or today.isoformat(), today.isoformat())}
+                                       if d > newest and d not in hist.get("landsat", {}))
+        except Exception as e:
+            print(f"  Landsat search failed ({type(e).__name__})")
         print(f"{river['name']}: {', '.join(new[river['id']]) or 'nothing new'}")
     any_new = any(new.values())
     if os.environ.get("GITHUB_OUTPUT"):

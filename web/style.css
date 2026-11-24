@@ -227,6 +227,8 @@ tr.rejected td:first-child { text-decoration: line-through; }
 .chart .dot.rad { fill: var(--surface-1); stroke: var(--series-2); stroke-width: 2; }
 .chart .dot.ls { fill: var(--series-3); stroke: var(--surface-1); stroke-width: 1.5; opacity: 0.85; }
 .key.ls { border-top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--series-3); }
+.chart .dot.gap { fill: var(--surface-1); stroke: var(--series-3); stroke-width: 2.5; }
+.key.gap { border-top: 0; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--series-3); }
 .checks-panel { margin-bottom: 16px; }
 .checks-panel .hint { margin: 8px 0 0; }
 .check-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }

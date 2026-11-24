@@ -15,8 +15,10 @@ Usage:
 """
 
 import argparse
+import warnings
 import hashlib
 import json
+import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -50,6 +52,13 @@ RADAR_EDGES = np.round(np.arange(-35, 5.001, 0.25), 2)
 # history (from the local pixel cache where it exists).
 METHOD = 5  # 5: weed cover as the covered share of each pixel, not all-or-nothing
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
+# The same Sentinel-2 images on Amazon (Element 84 Earth Search, free, no key): used for any day
+# Planetary Computer lacks or when it is down. Its files are named differently and say their own scale.
+# Earth Search lists file locations pystac can't parse for its storage extension; harmless.
+warnings.filterwarnings("ignore", message="Could not parse bucket", module="pystac")
+ES_URL, ES_COLLECTION = "https://earth-search.aws.element84.com/v1", "sentinel-2-c1-l2a"
+S2_ASSETS = {"pc": {"green": "B03", "red": "B04", "nir": "B08", "scl": "SCL", "aot": "AOT"},
+             "es": {"green": "green", "red": "red", "nir": "nir", "scl": "scl", "aot": "aot"}}
 
 
 def _projector(src, dst):
@@ -105,28 +114,123 @@ def read_band(href, tf, w, h, resampling):
         return vrt.read(1)
 
 
+def s2_source(item):
+    return "es" if item.collection_id == ES_COLLECTION else "pc"
+
+
+def scene_id(item):
+    """The image's name as stored with every figure: Planetary Computer's ID, which is ESA's product
+    name without the processing-baseline part, whichever catalogue the image came from."""
+    if s2_source(item) == "pc":
+        return item.id
+    return re.sub(r"_N\d{4}", "", item.properties["s2:product_uri"].removesuffix(".SAFE"))
+
+
 def read_scene(item, tf, w, h):
     """Return reflectance arrays (green, red, nir) and a validity mask for one scene."""
-    scl = read_band(item.assets["SCL"].href, tf, w, h, Resampling.nearest)
-    bands = [read_band(item.assets[b].href, tf, w, h, Resampling.bilinear).astype("float32")
-             for b in ("B03", "B04", "B08")]
-    # Processing baseline 04.00+ (2022 onwards) adds a +1000 offset to digital numbers.
-    offset = 1000 if float(item.properties.get("s2:processing_baseline", "0")) >= 4.0 else 0
-    green, red, nir = [(b - offset) / 10000 for b in bands]
+    names = S2_ASSETS[s2_source(item)]
+    scl = read_band(item.assets[names["scl"]].href, tf, w, h, Resampling.nearest)
+    bands = [read_band(item.assets[names[b]].href, tf, w, h, Resampling.bilinear).astype("float32")
+             for b in ("green", "red", "nir")]
+    if s2_source(item) == "es":  # each file states its scale and offset
+        rb = [item.assets[names[b]].extra_fields["raster:bands"][0] for b in ("green", "red", "nir")]
+        green, red, nir = [b * r["scale"] + r["offset"] for b, r in zip(bands, rb)]
+    else:
+        # Processing baseline 04.00+ (2022 onwards) adds a +1000 offset to digital numbers.
+        offset = 1000 if float(item.properties.get("s2:processing_baseline", "0")) >= 4.0 else 0
+        green, red, nir = [(b - offset) / 10000 for b in bands]
     valid = np.isin(scl, SCL_OK) & (bands[0] > 0)
     return green, red, nir, valid
 
 
+# ---------- Landsat 8/9 between Sentinel-2 images ----------
+# QA_PIXEL bits: 1 dilated cloud, 2 cirrus, 3 cloud, 4 cloud shadow.
+QA_BAD = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
+
+
+def landsat_scenes(river, since, until):
+    cat = pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
+    items = cat.search(collections=["landsat-c2-l2"], bbox=river["bbox"], datetime=f"{since}/{until}",
+                       query={"platform": {"in": ["landsat-8", "landsat-9"]}, "eo:cloud_cover": {"lt": 60}}).item_collection()
+    return sorted(items, key=lambda it: it.datetime)
+
+
+def landsat_indices(item, tf, w, h, mask):
+    """NDVI, NDWI and NDTI per river-corridor pixel from one Landsat scene (NaN where cloudy or
+    no data), defined as for Sentinel-2."""
+    green, red, nir = (read_band(item.assets[b].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
+                       * 0.0000275 - 0.2 for b in ("green", "red", "nir08"))  # Collection 2 reflectance scale
+    qa = read_band(item.assets["qa_pixel"].href, tf, w, h, Resampling.nearest)[mask]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = {"ndvi": (nir - red) / (nir + red), "ndwi": (green - nir) / (green + nir),
+               "ndti": (red - green) / (red + green)}
+    bad = ((qa & QA_BAD) > 0) | (green <= 0) | (red <= 0) | (nir <= 0) | (qa == 1)  # qa 1 = fill
+    for v in out.values():
+        v[bad] = np.nan
+    return out
+
+
+def inner_pixels(river_px):
+    """River pixels at least 20 m from the edge: there a whole 30 m Landsat pixel is river, so it
+    doesn't mix in bank plants (on these 40-60 m rivers the edges would add 5-18 points)."""
+    inner = river_px.copy()
+    for _ in range(2):
+        inner[1:] &= inner[:-1].copy(); inner[:-1] &= inner[1:].copy()
+        inner[:, 1:] &= inner[:, :-1].copy(); inner[:, :-1] &= inner[:, 1:].copy()
+    return inner
+
+
+def update_landsat_gap(river, det, history, since, until, tf, w, h, mask, keep, seg_idx, n_segs, save):
+    """Measure Landsat 8/9 images taken after the newest Sentinel-2 image, so the dashboard has a
+    rough figure when Sentinel-2 has none for a while. Same rule as Sentinel-2 (process_day), over
+    the inner river pixels only (keep: see inner_pixels). Stored in history["landsat"]; turned
+    into a calibrated river-wide estimate by landsat_standin."""
+    newest_s2 = max(history["dates"]) if history["dates"] else since.isoformat()
+    done = history.setdefault("landsat", {})
+    for d in [d for d in done if d <= newest_s2]:  # a newer Sentinel-2 image has closed that gap
+        del done[d]
+    todo = [it for it in landsat_scenes(river, max(since.isoformat(), newest_s2), until.isoformat())
+            if it.datetime.date().isoformat() > newest_s2 and it.datetime.date().isoformat() not in done]
+    for it in todo:
+        d = it.datetime.date().isoformat()
+        try:
+            res = process_day(landsat_indices(it, tf, w, h, mask), keep, seg_idx, n_segs, det)
+        except Exception as e:
+            print(f"  landsat {d}: error {type(e).__name__}: {e}")
+            continue
+        done[d] = None if res is None else {**res, "scenes": [it.id]}
+        print(f"  landsat {d}: " + ("too cloudy over river" if res is None else f"hyacinth {res['hyacinth_pct']}%"))
+        save()
+
+
 def search(river, since: date, until: date, det):
-    cat = pystac_client.Client.open(STAC_URL,
-                                    modifier=planetary_computer.sign_inplace)
-    items = cat.search(collections=["sentinel-2-l2a"], bbox=river["bbox"],
-                       datetime=f"{since.isoformat()}/{until.isoformat()}",
-                       query={"eo:cloud_cover": {"lt": det["max_scene_cloud"]}}).item_collection()
-    by_day = defaultdict(list)
-    for it in items:
-        by_day[it.datetime.date().isoformat()].append(it)
-    return dict(sorted(by_day.items()))
+    """Sentinel-2 images by day: from Planetary Computer, plus any day only Earth Search has (it
+    publishes some images sooner), or all from Earth Search when Planetary Computer is down."""
+    def find(url, collection, modifier=None):
+        cat = pystac_client.Client.open(url, modifier=modifier)
+        items = cat.search(collections=[collection], bbox=river["bbox"],
+                           datetime=f"{since.isoformat()}/{until.isoformat()}",
+                           query={"eo:cloud_cover": {"lt": det["max_scene_cloud"]}}).item_collection()
+        by_day = defaultdict(list)
+        for it in items:
+            by_day[it.datetime.date().isoformat()].append(it)
+        return by_day
+
+    found, failed = {}, []
+    for name, url, collection, modifier in (("Planetary Computer", STAC_URL, "sentinel-2-l2a", planetary_computer.sign_inplace),
+                                            ("Earth Search", ES_URL, ES_COLLECTION, None)):
+        try:
+            for d, items in find(url, collection, modifier).items():
+                if d not in found:
+                    found[d] = items
+                    if name == "Earth Search":
+                        print(f"  {d}: from Earth Search (not on Planetary Computer)")
+        except Exception as e:
+            failed.append(name)
+            print(f"  {name}: search failed ({type(e).__name__}), using the other catalogue")
+    if len(failed) == 2:
+        raise RuntimeError("both image catalogues are unavailable")
+    return dict(sorted(found.items()))
 
 
 def read_day(items, tf, w, h):
@@ -186,8 +290,9 @@ def day_quality(river_id: str, d: str, items, tf, w, h, mask):
 
 
 def read_quality(items, tf, w, h, mask):
-    aot = read_band(items[0].assets["AOT"].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
-    scl = read_band(items[0].assets["SCL"].href, tf, w, h, Resampling.nearest)[mask]
+    names = S2_ASSETS[s2_source(items[0])]
+    aot = read_band(items[0].assets[names["aot"]].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
+    scl = read_band(items[0].assets[names["scl"]].href, tf, w, h, Resampling.nearest)[mask]
     return {"aot": round(float(aot[aot > 0].mean()) / 1000, 3) if (aot > 0).any() else None,
             "cloud_share": round(float(np.isin(scl, [3, 8, 9, 10]).mean()), 3)}
 
@@ -497,9 +602,15 @@ def run_river(river, cfg, since: date | None):
             history["skipped"].append(d)
             print(f"  {d}: too cloudy over river, skipped")
         else:
-            history["dates"][d] = {**res, "scenes": [it.id for it in items]}
+            history["dates"][d] = {**res, "scenes": [scene_id(it) for it in items]}
             print(f"  {d}: hyacinth {res['hyacinth_pct']}%  turbid {res['turbid_pct']}%")
         save()
+
+    try:  # Landsat only fills gaps; an outage there must not block the optical update
+        update_landsat_gap(river, det, history, since, until, tf, w, h, mask, inner_pixels(river_px)[mask],
+                           seg_idx, len(segments), save)
+    except Exception as e:
+        print(f"  landsat: skipped this run ({type(e).__name__}: {e})")
 
     if rad:
         try:  # radar is a bonus layer; an outage there must not block the optical update
@@ -876,6 +987,32 @@ def direction_agreement(rows, min_change=5, max_gap=60):
     return {"share": round(agree / n, 3), "changes": n} if n >= 5 else None
 
 
+def landsat_standin(river_id, history, dates, cfg):
+    """How well Landsat over inner pixels stands in for the published (whole-river Sentinel-2)
+    figure, from every past pair of images taken within a day. A straight line maps one to the
+    other (mid-channel Landsat misses weed along the edges, so even 0 maps to a few %); its error
+    is measured out of sample (each pair predicted from all the others), and 80% of those errors
+    are within error80. Used only if the correlation reaches cfg["min_correlation"]."""
+    path = ROOT / f"data/validation/{river_id}-landsat.json"
+    if not path.exists():
+        return None
+    pairs = [(history["dates"][p["date"]]["hyacinth_pct"], p["landsat_pct"])
+             for p in json.loads(path.read_text())["pairs"] if p["date"] in dates]
+    if len(pairs) < 20:
+        return None
+    a = np.array(pairs)
+    s2, ls = a[:, 0], a[:, 1]
+    errors = []
+    for i in range(len(a)):
+        rest = np.arange(len(a)) != i
+        errors.append(abs(np.polyval(np.polyfit(ls[rest], s2[rest], 1), ls[i]) - s2[i]))
+    slope, intercept = np.polyfit(ls, s2, 1)
+    corr = float(np.corrcoef(s2, ls)[0, 1])
+    return {"pairs": len(a), "slope": round(float(slope), 3), "intercept": round(float(intercept), 2),
+            "correlation": round(corr, 2), "error80": round(float(np.percentile(errors, 80)), 1),
+            "used": corr >= cfg["min_correlation"]}
+
+
 def landsat_check(river_id):
     """Summary of the Landsat 8/9 comparison (crosscheck_landsat.py) with every pair, or None."""
     path = ROOT / f"data/validation/{river_id}-landsat.json"
@@ -1231,6 +1368,20 @@ def write_web(river, cfg, segments, history, area):
             [None if np.isnan(v) else round(float(v), 1) for v in row] for row in hy_raw],
             "one_off": [[int(i), int(k)] for i, k in zip(*np.nonzero(spike))]},
     }
+    # Landsat images newer than the newest Sentinel-2 one (see update_landsat_gap): a river-wide
+    # estimate, corrected by Landsat's past offset and shown with its measured error, until
+    # Sentinel-2 catches up. Not used in any other figure, and not on rivers where it tracks poorly.
+    standin = landsat_standin(river["id"], history, dates, cfg["gap_fill"]) if cfg.get("gap_fill") else None
+    out["landsat_standin"] = standin
+    def estimate(x):
+        return min(100.0, max(0.0, standin["slope"] * x + standin["intercept"]))
+    out["gap_fill"] = [{
+        "date": d, "sensor": "landsat", "scene": v["scenes"][0], "landsat_pct": v["hyacinth_pct"],
+        "hyacinth_pct": round(estimate(v["hyacinth_pct"]), 1),
+        "range": [round(max(0.0, estimate(v["hyacinth_pct"]) - standin["error80"]), 1),
+                  round(min(100.0, estimate(v["hyacinth_pct"]) + standin["error80"]), 1)],
+    } for d, v in sorted(history.get("landsat", {}).items())
+        if v and d > dates[-1] and standin and standin["used"]]
     if look:
         out["outlook"] = look
     cal = calibrate_radar({**history, "dates": {d: history["dates"][d] for d in dates}}, rad) if rad else None

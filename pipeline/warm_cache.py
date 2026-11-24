@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 import yaml
 
-from run import ROOT, load_river, make_grid, prefetch, reject_dates, search
+from run import ROOT, load_river, make_grid, prefetch, reject_dates, scene_id, search
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
             continue
         days = search(river, date.fromisoformat(missing[0]), date.fromisoformat(missing[-1]), det)
         # The images each stored date came from (the catalogue may list more for that day).
-        found = {d: [it for it in days[d] if it.id in hist["dates"][d]["scenes"]] or days[d]
+        found = {d: [it for it in days[d] if scene_id(it) in hist["dates"][d]["scenes"]] or days[d]
                  for d in missing if d in days}
         prefetch(river["id"], found, tf, w, h, mask)
 

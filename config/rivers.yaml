@@ -135,6 +135,12 @@ alerts:
   days: 120
   spread_pts: 10
 
+# Landsat 8/9 between Sentinel-2 images: a rough river-wide estimate from the inner river pixels,
+# corrected by its past offset from the published figure; only on rivers where the two correlate at
+# least this well over past pairs (Pawana: 0.51, not used).
+gap_fill:
+  min_correlation: 0.7
+
 # Ward league table on the dashboard. A ward's figure needs min_seen of its river area seen; "now"
 # uses readings at most now_days older than the newest image, "a year ago" the reading closest to
 # a year earlier within year_window days; the 12-month average needs min_images images.

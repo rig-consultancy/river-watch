@@ -25,37 +25,11 @@ import yaml
 from rasterio.enums import Resampling
 from shapely import STRtree, points
 
-from run import (ROOT, STAC_URL, cover_fraction, day_pixels, load_river, make_grid, make_segments, read_band,
-                 reject_dates, river_area, river_det, search)
+from run import (ROOT, cover_fraction, day_pixels, landsat_indices, landsat_scenes, load_river, make_grid,
+                 make_segments, reject_dates, river_area, river_det, scene_id, search)
 
 # Bump when what is stored per pair changes; --new then compares every pair again.
 VERSION = 4  # 2: muddy water share; 3: and mean NDTI of open water; 4: weed as covered share of pixels
-
-# QA_PIXEL bits: 1 dilated cloud, 2 cirrus, 3 cloud, 4 cloud shadow.
-QA_BAD = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
-
-
-def landsat_scenes(river, since, until):
-    cat = pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
-    items = cat.search(collections=["landsat-c2-l2"], bbox=river["bbox"], datetime=f"{since}/{until}",
-                       query={"platform": {"in": ["landsat-8", "landsat-9"]}, "eo:cloud_cover": {"lt": 60}}).item_collection()
-    return sorted(items, key=lambda it: it.datetime)
-
-
-def landsat_indices(item, tf, w, h, mask):
-    """NDVI, NDWI and NDTI per river-corridor pixel from one Landsat scene (NaN where cloudy or
-    no data), defined as for Sentinel-2."""
-    green, red, nir = (read_band(item.assets[b].href, tf, w, h, Resampling.nearest)[mask].astype("float32")
-                       * 0.0000275 - 0.2 for b in ("green", "red", "nir08"))  # Collection 2 reflectance scale
-    qa = read_band(item.assets["qa_pixel"].href, tf, w, h, Resampling.nearest)[mask]
-    with np.errstate(invalid="ignore", divide="ignore"):
-        out = {"ndvi": (nir - red) / (nir + red), "ndwi": (green - nir) / (green + nir),
-               "ndti": (red - green) / (red + green)}
-    bad = ((qa & QA_BAD) > 0) | (green <= 0) | (red <= 0) | (nir <= 0) | (qa == 1)  # qa 1 = fill
-    for v in out.values():
-        v[bad] = np.nan
-    return out
-
 
 def build(river, cfg, new_only=False, max_days=1):
     det = river_det(river, cfg)
@@ -105,7 +79,7 @@ def build(river, cfg, new_only=False, max_days=1):
             # Sentinel-2 pixels from the cache, or downloaded again (GitHub's cache may not have them).
             s2_items = [] if (ROOT / f"data/cache/{river['id']}/{d}.npz").exists() else [
                 s for s in search(river, date.fromisoformat(d), date.fromisoformat(d), det).get(d, [])
-                if s.id in hist["dates"][d]["scenes"]]
+                if scene_id(s) in hist["dates"][d]["scenes"]]
             s2_px = day_pixels(river["id"], d, s2_items, tf, w, h, mask)
         except Exception as e:
             print(f"  {it.id}: failed ({type(e).__name__})")

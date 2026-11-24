@@ -3,6 +3,12 @@
 
 const STRINGS = {
   en: {
+    n_pct_landsat: "rough estimate from Landsat on {date} (likely {lo}–{hi}%): no Sentinel-2 image since {s2}",
+    meta_landsat: "Landsat estimate {date}",
+    l_gap: "Landsat estimate (no Sentinel-2 image)",
+    x_gap: "Fills Sentinel-2 gaps",
+    x_gap_used: "yes, river-wide only: ±{e} points (tested on {n} past pairs)",
+    x_gap_not: "no: tracks this river too loosely (correlation {r})",
     cause_drift: "drifted: a nearby stretch gained the weed",
     w_title: "Ward league table",
     w_by_now: "Weed now",
@@ -420,6 +426,12 @@ const STRINGS = {
   },
 
   mr: {
+    n_pct_landsat: "{date} च्या लँडसॅटवरून ढोबळ अंदाज (साधारण {lo}–{hi}%): {s2} नंतर सेंटिनेल-२ प्रतिमा नाही",
+    meta_landsat: "लँडसॅट अंदाज {date}",
+    l_gap: "लँडसॅट अंदाज (सेंटिनेल-२ प्रतिमा नाही)",
+    x_gap: "सेंटिनेल-२ ची पोकळी भरतो",
+    x_gap_used: "होय, फक्त संपूर्ण नदीसाठी: ±{e} बिंदू ({n} जुन्या जोड्यांवर तपासले)",
+    x_gap_not: "नाही: या नदीवर पुरेसा जुळत नाही (सहसंबंध {r})",
     cause_drift: "वाहून गेली: जवळच्या भागात जलपर्णी वाढली",
     w_title: "प्रभागनिहाय क्रमवारी",
     w_by_now: "सध्याची जलपर्णी",
