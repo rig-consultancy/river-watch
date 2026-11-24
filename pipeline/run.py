@@ -897,8 +897,16 @@ def cleanup_events(dates, hy, sigma, rain, cfg):
     numbers = {}
     for i, e in enumerate(removal):
         e["operation"] = numbers.setdefault(root(i), len(numbers))
+    # Confirmed: the operation covers at least two neighbouring stretches (1 km or more) and every
+    # one of them is still low on the next image, as a machine clearing a reach looks; a single
+    # stretch emptying is more often a mat breaking up or sinking.
+    size, held = defaultdict(int), defaultdict(lambda: True)
+    for e in removal:
+        size[e["operation"]] += 1
+        held[e["operation"]] &= e["confirmed"]
     for e in drops:
         e.setdefault("operation", None)
+        e["confirmed_cleanup"] = e["operation"] is not None and size[e["operation"]] >= 2 and held[e["operation"]]
     return drops
 
 
@@ -1166,6 +1174,9 @@ def ward_table(dates, hy, seg_px, regions, conf, events, cfg):
             "avg_12m": round(float(np.mean(per_image)), 1) if len(per_image) >= cfg["min_images"] else None,
             "cleanups": len(mine),
             "cleanups_12m": sum(1 for op in mine if max(date.fromisoformat(e["to"]).toordinal() for e in op) > year_ago),
+            "confirmed_cleanups": sum(1 for op in mine if op[0]["confirmed_cleanup"]),
+            "confirmed_12m": sum(1 for op in mine if op[0]["confirmed_cleanup"]
+                                 and max(date.fromisoformat(e["to"]).toordinal() for e in op) > year_ago),
             # A median of one or two clean-ups says little: needs min_regrowth of them.
             "regrowth_days": int(np.median(regrow)) if len(regrow) >= cfg["min_regrowth"] else None,
             "regrowth_n": len(regrow),

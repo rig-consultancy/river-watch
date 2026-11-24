@@ -137,6 +137,7 @@ function cleanupFact(p) {
   const ev = (current.cleanup_events || []).filter((e) => e.segment === p.id).sort((a, b) => (a.to < b.to ? 1 : -1));
   if (!ev.length) return "";
   const rows = ev.slice(0, 5).map((e) => `<span class="conf-why">${fmtDate(e.to)}: ${nf(e.before)}% → ${nf(e.after)}% · ${t(`cause_${e.cause}`)}` +
+    (e.confirmed_cleanup ? ` · <strong>${t("confirmed_cleanup")}</strong>` : "") +
     (e.regrowth_days != null ? ` · ${t("r_regrew", { n: nf(e.regrowth_days, 0) })}` : "") + "</span>").join("");
   return `<div><dt>${t("f_drops", { n: nf(ev.length, 0) })}</dt><dd>${rows}</dd></div>`;
 }
@@ -621,9 +622,10 @@ function drawWards() {
     const ch = w.change == null ? "–" : `<span class="${w.change > 0 ? "delta-up" : w.change < 0 ? "delta-down" : ""}">${w.change > 0 ? "+" : ""}${t("pts", { v: nf(w.change) })}</span>`;
     return `<tr class="${state.ward === key ? "on" : ""} ${w.ranked ? "" : "unranked"}" data-ward="${key.replace(/"/g, "&quot;")}">
       <td>${w.ranked ? nf(++rank, 0) : "–"}</td>
-      <td><button type="button" class="linkish">${w.ward}</button>${corp}${w.ranked ? "" : ` <small class="conf-why">${t("w_low_conf")}</small>`}</td>
+      <td><button type="button" class="linkish">${w.ward}</button>${corp}${w.ranked ? "" : ` <small class="conf-why">${t("w_low_conf")}</small>`}
+        <small><a href="ward.html?${new URLSearchParams({ river: current.river.id, ward: key, ...(state.lang !== "en" ? { lang: state.lang } : {}) })}">${t("wr_report")}</a></small></td>
       <td><strong>${pct(w.now)}</strong></td><td>${pct(w.last_year)}</td><td>${ch}</td><td>${pct(w.avg_12m)}</td>
-      <td>${nf(w.cleanups_12m, 0)}</td>
+      <td>${nf(w.cleanups_12m, 0)}${w.confirmed_12m ? `<small>${t("w_confirmed", { n: nf(w.confirmed_12m, 0) })}</small>` : ""}</td>
       <td>${w.regrowth_days == null ? "–" : t("w_days", { n: nf(w.regrowth_days, 0) }) + `<small>${t("w_days_of", { c: nf(w.regrowth_n, 0) })}</small>`}</td>
       <td>${worst ? `<button type="button" class="linkish" data-seg="${worst.id}">${segName(worst)}</button>` : "–"}</td></tr>`;
   }).join("");
@@ -949,10 +951,10 @@ async function main() {
   document.querySelectorAll("[data-wsort]").forEach((b) => b.addEventListener("click", () => { wardSort = b.dataset.wsort; drawWards(); }));
   $("dl-wards").addEventListener("click", () => download(`${current.river.id}-wards.csv`,
     ["rank_by_" + wardSort, "corporation", "ward", "river_km", "weed_now_pct", "a_year_ago_pct", "change_pts", "avg_12_months_pct",
-      "probable_cleanups_12_months", "probable_cleanups_since_2017", "median_days_back_to_half", "cleanups_with_regrowth_seen",
+      "probable_cleanups_12_months", "confirmed_cleanups_12_months", "probable_cleanups_since_2017", "confirmed_cleanups_since_2017", "median_days_back_to_half", "cleanups_with_regrowth_seen",
       "share_reliable", "worst_stretch"],
     wardRows().map((w, i) => [w.ranked ? i + 1 : "", w.region.toUpperCase(), w.ward, w.km, w.now, w.last_year, w.change, w.avg_12m,
-      w.cleanups_12m, w.cleanups, w.regrowth_days, w.regrowth_n, w.reliable, w.worst == null ? "" : w.worst + 1])));
+      w.cleanups_12m, w.confirmed_12m, w.cleanups, w.confirmed_cleanups, w.regrowth_days, w.regrowth_n, w.reliable, w.worst == null ? "" : w.worst + 1])));
   $("region").addEventListener("change", (e) => setRegion(e.target.value));
   $("ward").addEventListener("change", (e) => setWard(e.target.value));
   $("d-close").addEventListener("click", () => { selected = null; syncUrl(); drawDetail(); });

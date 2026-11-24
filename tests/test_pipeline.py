@@ -168,6 +168,8 @@ def test_cleanup_events_label_cause_and_regrowth():
     both[:, 1] = [35, 4, 4, 5, 20, 30]
     ev = run.cleanup_events(dates, both, {}, dry, CLEANUP)
     assert [e["cause"] for e in ev] == ["removal", "removal"] and len({e["operation"] for e in ev}) == 1
+    assert all(e["confirmed_cleanup"] for e in ev)  # 2 neighbouring stretches, both still low next image
+    assert not run.cleanup_events(dates, hy, {}, dry, CLEANUP)[0]["confirmed_cleanup"]  # one stretch only
     hy[:, 2:6] = np.array([40, 5, 5, 5, 5, 5])[:, None]  # 5 of 10 drop together: river-wide
     assert {e["cause"] for e in run.cleanup_events(dates, hy, {}, dry, CLEANUP)} == {"river_wide"}
 
@@ -249,7 +251,8 @@ def test_ward_table_weights_by_area_and_needs_enough_seen():
     seg_px = np.array([100, 300, 100])
     regions = [(["pmc"], ["A"]), (["pmc", "pcmc"], ["A", "Z"]), (["pcmc"], ["Z"])]  # stretch 1 on the border
     conf = {0: ("high", []), 1: ("low", []), 2: ("high", [])}
-    events = [{"segment": 0, "cause": "removal", "to": "2026-02-20", "regrowth_days": 30, "operation": 0},
+    events = [{"segment": 0, "cause": "removal", "to": "2026-02-20", "regrowth_days": 30, "operation": 0,
+               "confirmed_cleanup": False},
               {"segment": 0, "cause": "rain", "to": "2026-02-20", "regrowth_days": 5, "operation": None}]
     cfg = {"min_seen": 0.5, "now_days": 30, "year_window": 21, "min_images": 2, "min_regrowth": 1,
            "ranked_reliable": 0.5, "segment_km": 0.5}

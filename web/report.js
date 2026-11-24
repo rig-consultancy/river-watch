@@ -58,7 +58,7 @@ function riverSvg(means) {
   const lines = feats.map((f) => {
     const v = byId.get(f.properties.id), mine = inRegion(f.properties);
     const d = f.geometry.coordinates.map((c, i) => `${i ? "L" : "M"}${sx(c[0]).toFixed(1)},${sy(c[1]).toFixed(1)}`).join("");
-    return `<path d="${d}" stroke="${mine ? color(v) : "#e2e1dc"}" stroke-width="${v >= 5 && mine ? 5 : 3}" fill="none" stroke-linecap="round"/>`;
+    return `<path d="${d}" style="stroke:${mine ? color(v) : "var(--border)"}" stroke-width="${v >= 5 && mine ? 5 : 3}" fill="none" stroke-linecap="round"/>`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H + 10}" class="river-svg" role="img" aria-label="${esc(t("r_map"))}">${lines}</svg>
     <div class="legend">${[["#4b9bc8", "<5%"], ["#ec8a5e", "5–15%"], ["#e0602c", "15–30%"], ["#b8451a", "30–50%"], ["#7f2c0e", "50%+"], ["#c9c9c4", t("r_no_view")]]
