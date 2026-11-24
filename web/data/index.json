@@ -6,7 +6,7 @@
    "name_mr": "मुळा-मुठा (पुणे)",
    "kind": "river",
    "latest_date": "2026-11-24",
-   "version": "910f980cb25d"
+   "version": "e66c167ff576"
   },
   {
    "id": "pawana-pcmc",
@@ -14,7 +14,7 @@
    "name_mr": "पवना (पिंपरी-चिंचवड)",
    "kind": "river",
    "latest_date": "2026-11-24",
-   "version": "c75f946405d4"
+   "version": "02de94ff1d79"
   },
   {
    "id": "indrayani-pcmc",
@@ -22,7 +22,7 @@
    "name_mr": "इंद्रायणी (देहू-आळंदी)",
    "kind": "river",
    "latest_date": "2026-11-24",
-   "version": "e11cd6f5ac12"
+   "version": "c0ab8f37265c"
   },
   {
    "id": "khadakwasla-reservoir",
@@ -30,7 +30,7 @@
    "name_mr": "खडकवासला जलाशय",
    "kind": "lake",
    "latest_date": "2026-11-24",
-   "version": "b0db89892875"
+   "version": "e0691292ad27"
   },
   {
    "id": "pashan-lake",
@@ -38,7 +38,7 @@
    "name_mr": "पाषाण तलाव",
    "kind": "lake",
    "latest_date": "2026-11-24",
-   "version": "03d4257c60fe"
+   "version": "b9bd01890d83"
   },
   {
    "id": "katraj-lakes",
@@ -46,7 +46,7 @@
    "name_mr": "कात्रज तलाव",
    "kind": "lake",
    "latest_date": "2026-11-14",
-   "version": "dfa755144517"
+   "version": "d06fd19026b0"
   }
  ]
 }
