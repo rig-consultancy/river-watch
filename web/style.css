@@ -99,6 +99,9 @@ main { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
 .stale { margin: -8px 0 16px; padding: 8px 12px; border-radius: 8px; font-size: 13px;
   background: color-mix(in srgb, var(--critical) 12%, transparent); color: var(--text-primary); }
 .stale.note { background: color-mix(in srgb, var(--text-muted) 14%, transparent); }
+.season { margin: -4px 0 16px; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.5;
+  border: 1px solid var(--border); color: var(--text-secondary); }
+.season strong { color: var(--text-primary); }
 .live { margin: -8px 0 16px; padding: 8px 12px; border-radius: 8px; font-size: 13px;
   background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text-primary); }
 

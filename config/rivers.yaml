@@ -141,6 +141,13 @@ alerts:
 gap_fill:
   min_correlation: 0.7
 
+# Weed season (1 Oct - 15 Jun): it "takes off" on the first of two images at least start_pct within
+# 3 weeks. A season needs min_images images; the forecast needs min_seasons complete seasons.
+season:
+  start_pct: 5
+  min_images: 15
+  min_seasons: 5
+
 # Ward league table on the dashboard. A ward's figure needs min_seen of its river area seen; "now"
 # uses readings at most now_days older than the newest image, "a year ago" the reading closest to
 # a year earlier within year_window days; the 12-month average needs min_images images.

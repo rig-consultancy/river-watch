@@ -523,6 +523,38 @@ function setDelta(el, d) {
   el.className = "tile-value " + (d > 0 ? "delta-up" : d < 0 ? "delta-down" : "");
 }
 
+// When the weed season usually takes off and peaks (from past seasons), and where this one is.
+function drawSeason() {
+  const low = current.low_confidence_share ?? 0;
+  $("narrow").hidden = low <= 0.35;  // the Pawana: half; the others: 4% and 12%
+  $("narrow").innerHTML = `<strong>${t("narrow_title")}</strong> ${t("narrow_text", { p: nf(low * 100, 0) })}`;
+  const se = current.season, el = $("season");
+  el.hidden = !se;
+  if (!se) return;
+  const y = se.current ? se.current.season : +current.latest_date.slice(0, 4) - (current.latest_date.slice(5) < "10-01" ? 1 : 0);
+  const day = (n) => fmtDate(new Date(Date.UTC(y, 9, 1) + n * dayMs).toISOString().slice(0, 10));
+  const start = se.start_error_days > 45
+    ? t("se_start_irregular", { e: nf(se.start_error_days, 0) })
+    : t("se_start", { d: day(se.start_day), a: day(se.start_range[0]), b: day(se.start_range[1]), e: nf(se.start_error_days, 0) });
+  const peak = t("se_peak", { d: day(se.peak_day), p: nf(se.peak_pct, 0), lo: nf(se.peak_range[0], 0), hi: nf(se.peak_range[1], 0) });
+  const now = !se.current ? "" : se.current.start ? t("se_now_started", { d: fmtDate(se.current.start) }) : t("se_now_not_yet");
+  el.innerHTML = `<strong>${t("se_title")}</strong> ${start} ${peak} ${now}`;
+}
+
+// Muddiness against the river's (or area's) own record: each image's average muddiness of open water
+// (mean NDTI) ranked among all its images, 0 = clearest ever, 50 = usual, 100 = muddiest. A fixed
+// threshold read 0% on almost every image here, so this shows the changes that do happen.
+function mudRank(rows) {
+  const sorted = rows.map((r) => r.mean_ndti).filter((v) => v != null).sort((a, b) => a - b);
+  const rank = (v) => {
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] <= v) lo = m + 1; else hi = m; }
+    return Math.round((lo / sorted.length) * 100);
+  };
+  return rows.map((r) => ({ ...r, mud_rank: r.mean_ndti == null || !sorted.length ? null : rank(r.mean_ndti) }));
+}
+const mudWord = (r) => (r == null ? "–" : r >= 80 ? t("mud_more") : r <= 20 ? t("mud_less") : t("mud_usual"));
+
 function drawTiles() {
   const s = current.series, last = s[s.length - 1];
   const reg = selectedRegion();
@@ -570,10 +602,9 @@ function drawTiles() {
           : t("n_outlook", { lo: nf(lo.low), hi: nf(lo.high), date: fmtDate(look.target_date) });
 
   // Muddy water: the selected area's own figure on its latest date, else the whole river.
-  const mud = reg ? now?.turbid_pct : last.turbid_pct;
-  $("t-turbid").textContent = mud == null ? "–" : `${nf(mud)}%`;
-  $("t-turbid-note").textContent = mud == null ? t("n_turbid_none")
-    : reg ? t("n_turbid_area", { area: regionName(reg) }) : t("n_turbid", { w: nf(last.open_water_pct, 0) });
+  const mudRow = mudRank(rows).at(-1), mr = mudRow?.mud_rank;
+  $("t-turbid").textContent = mudWord(mr);
+  $("t-turbid-note").textContent = mr == null ? t("n_turbid_none") : t("n_mud_rank", { r: nf(mr, 0) });
 }
 
 // ---------- regions table ----------
@@ -658,10 +689,10 @@ function drawCharts() {
     hy.push({ name: t("l_gap"), cls: "gap", rows: current.gap_fill, key: "hyacinth_pct", dotsOnly: true, band: "range" });
   }
   lineChart($("c-hy"), hy, t("c_hy"));
-  const tu = [optical("turbid_pct")];
+  const tu = [{ ...optical("mud_rank"), rows: mudRank(current.series) }];
   if (reg) {
     tu[0].name = t("l_whole");
-    tu.push({ name: t("l_region", { area: reg.id === "other" ? t("outside") : regionName(reg) }), cls: "reg", rows: reg.series, key: "turbid_pct" });
+    tu.push({ name: t("l_region", { area: reg.id === "other" ? t("outside") : regionName(reg) }), cls: "reg", rows: mudRank(reg.series), key: "mud_rank" });
   }
   lineChart($("c-tu"), tu, t("c_tu"));
   if (selected != null) drawDetail();
@@ -878,6 +909,7 @@ function renderAll(fit) {
   drawStatus();
   drawLegend();
   drawTiles();
+  drawSeason();
   drawSegments(fit);
   setIdx(idx);
   if (playTimer) $("play").textContent = t("pause");
@@ -973,6 +1005,15 @@ async function main() {
   status = await fetch("status.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   await loadRiver(sel.value);
   setInterval(checkForUpdate, 5 * 60e3);
+  // Installable app: keeps the pages and the last data for opening without a connection (sw.js).
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  const offline = () => {
+    $("offline").hidden = navigator.onLine;
+    $("offline").textContent = t("offline", { date: fmtDate(current.latest_date) });
+  };
+  addEventListener("online", () => { offline(); checkForUpdate(); });
+  addEventListener("offline", offline);
+  offline();
   setInterval(() => current && drawStatus(), 60e3); // keep "checked N minutes ago" true
   document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
   let rt;

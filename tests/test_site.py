@@ -259,3 +259,14 @@ def test_alert_feed_matches_the_published_alerts():
     want = {f"tag:rig-consultancy.github.io,2026:river-watch/{r}/{a['type']}/{a['segment']}/{a['date']}"
             for r in RIVERS for a in json.loads((WEB / f"data/{r}.json").read_text())["alerts"]}
     assert ids == set(sorted(want)[-100:]) if len(want) > 100 else ids == want
+
+
+def test_installable_app_files():
+    """manifest, icons and the offline cache list point at files that exist."""
+    m = json.loads((WEB / "manifest.webmanifest").read_text())
+    assert m["start_url"] == "./" and m["display"] == "standalone"
+    for icon in m["icons"]:
+        assert (WEB / icon["src"]).exists(), icon["src"]
+    shell = re.search(r"const SHELL = \[(.*?)\];", (WEB / "sw.js").read_text(), re.S).group(1)
+    for f in re.findall(r'"([^"]+)"', shell):
+        assert f == "./" or (WEB / f).exists(), f

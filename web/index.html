@@ -7,6 +7,10 @@
 <meta name="description" content="Satellite monitoring of water hyacinth and muddy water on Pune's rivers, updated automatically from Sentinel-2.">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#10222f">
 </head>
 <body>
 <header class="top">
@@ -29,6 +33,7 @@
   <p class="meta"><span id="meta">Loading…</span> · <a id="report-link" href="report.html" data-i18n="r_open">Monthly report</a> · <a href="roadside.html" data-i18n="rs_link">Roadside garbage</a> · <a href="city.html" data-i18n="cw_link">PCMC land watch</a></p>
   <p class="stale" id="stale" role="status" hidden></p>
   <p class="live" id="live" role="status" aria-live="polite" hidden></p>
+  <p class="stale note" id="offline" role="status" hidden></p>
 
   <section class="tiles" aria-label="Latest figures">
     <div class="tile"><div class="tile-label" data-i18n="t_pct">Hyacinth cover</div><div class="tile-value" id="t-pct">–</div><div class="tile-note" id="t-pct-note"></div></div>
@@ -38,6 +43,8 @@
     <div class="tile"><div class="tile-label" data-i18n="t_outlook">2-week outlook</div><div class="tile-value" id="t-outlook">–</div><div class="tile-note" id="t-outlook-note"></div></div>
     <div class="tile"><div class="tile-label" data-i18n="t_turbid">Muddy water</div><div class="tile-value" id="t-turbid">–</div><div class="tile-note" id="t-turbid-note"></div></div>
   </section>
+  <p class="season" id="season" hidden></p>
+  <p class="season" id="narrow" hidden></p>
 
   <section class="mapwrap">
     <div class="panel map-panel">
@@ -122,7 +129,7 @@
       <div class="chart" id="c-hy"></div>
     </div>
     <div class="panel">
-      <div class="panel-head"><h2 data-i18n="c_tu">Muddy water over time</h2><span class="unit" data-i18n="u_water">% of open water</span></div>
+      <div class="panel-head"><h2 data-i18n="c_tu">Muddy water over time</h2><span class="unit" data-i18n="u_mud">rank in the river's record: 0 clearest, 100 muddiest</span></div>
       <div class="chart" id="c-tu"></div>
     </div>
   </section>

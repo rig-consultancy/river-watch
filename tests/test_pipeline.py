@@ -297,3 +297,18 @@ def test_landsat_standin_line_and_out_of_sample_error(tmp_path, monkeypatch):
     got = run.landsat_standin("x", history, dates, {"min_correlation": 0.7})
     assert got["used"] and got["slope"] == pytest.approx(1, abs=0.05) and got["intercept"] == pytest.approx(3, abs=0.6)
     assert 0.5 < got["error80"] < 2.5  # noise of 1 point, measured out of sample
+
+
+def test_season_forecast_take_off_peak_and_error():
+    from datetime import date, timedelta
+    dates, pct = [], []
+    for y in range(2017, 2024):  # every season takes off on 15 Jan (+/- a week) and peaks mid-April
+        for k in range(0, 250, 5):
+            d = date(y, 10, 1) + timedelta(days=k)
+            take_off = date(y + 1, 1, 15) + timedelta(days=7 * ((y % 3) - 1))
+            dates.append(d.isoformat())
+            pct.append(0.0 if d < take_off else min(30.0, 2 + (d - take_off).days / 3))
+    s = run.season_forecast(dates, pct, {"start_pct": 5, "min_images": 15, "min_seasons": 5})
+    assert abs(s["start_day"] - (date(2018, 1, 15) - date(2017, 10, 1)).days) <= 10
+    assert s["start_error_days"] <= 10 and s["peak_pct"] == 30.0
+    assert s["current"] is None or s["current"]["season"] == 2023

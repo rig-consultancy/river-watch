@@ -10,6 +10,7 @@ Copyright RIG Consultancy, all rights reserved (see LICENSE).
 
 ```
 config/rivers.yaml          which rivers to watch + detection thresholds
+pipeline/sources.py         the image catalogues (Planetary Computer, Earth Search), Landsat and the pixel cache
 pipeline/fetch_rivers.py    one-off: river outline + place names (English, Marathi) from OpenStreetMap -> data/rivers/
 pipeline/run.py             scheduled: Sentinel-2 -> per-500 m stats -> data/history/ + web/data/
 pipeline/build_river_mask.py after each monsoon (CI runs it on 15 Oct): river area + flood test -> data/masks/
@@ -119,6 +120,23 @@ tests/                      uv run pytest: calculations and the published data
   fitted to all past pairs. Its error, measured out of sample, is shown as the range: ±4.2 points on
   the Mula-Mutha, ±8.9 on the Indrayani; not used on the Pawana (correlation 0.51). It shows in
   the cover tile and chart, labelled, until Sentinel-2 catches up; nothing else uses it.
+- **Confirmed clean-ups:** a probable clean-up covering 1 km or more (two neighbouring stretches),
+  every stretch still clear on the next image; shown next to the probable count (ward table, CSV,
+  stretch details, ward report).
+- **Ward report:** `ward.html?river=&ward=&lang=` is a printable page per ward: weed now and its
+  rank, a year ago, 12-month average, clean-ups, a map with the ward's stretches, its 12-month trend,
+  every stretch with its flags, and its clean-ups. Linked from each row of the ward table.
+- **Weed season:** from every past season (1 Oct - 15 Jun): when weed takes off (first of two images
+  at 5% or more within 3 weeks) and when it peaks. The dashboard gives the middle of past seasons,
+  the middle half as the range and the error measured by predicting each season from the others
+  (take-off ±35 days on the Mula-Mutha, ±28 on the Indrayani; the Pawana's varies too much: ±72).
+- **Muddy water as a rank:** a fixed threshold read 0% on almost every image, so the tile and chart
+  rank each image's average muddiness of open water (mean NDTI) among all of the river's (or area's)
+  images: 0 clearest, 50 usual, 100 muddiest; muddier/clearer than usual above 80 / below 20.
+- **Narrow river note:** where over a third of the river area is in low-confidence stretches (the
+  Pawana: half; it is about 22 m wide in the images), the dashboard says to rely on river-wide figures.
+- **Installable app:** `manifest.webmanifest`, icons and `sw.js` let phones install the dashboard;
+  pages and the last data are kept (network first), so it opens offline with a note saying so.
 - **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
   month's average and range, change, river map, worst stretches, drops and data quality.
 - **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).
