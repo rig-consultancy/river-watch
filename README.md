@@ -1,5 +1,7 @@
 # River Watch
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24490437.svg)](https://doi.org/10.5281/zenodo.24490437)
+
 Automatic satellite monitoring of water hyacinth (floating vegetation) and muddy water on Pune's
 rivers: the Mula-Mutha, Pawana and Indrayani, from 2017. No manual steps: a scheduled job downloads
 new Sentinel-2 images, analyses the rivers, and republishes the dashboard and monthly reports.
