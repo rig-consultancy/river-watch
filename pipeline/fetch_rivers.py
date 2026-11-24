@@ -13,7 +13,7 @@ from pathlib import Path
 import requests
 import yaml
 from shapely.geometry import LineString, Polygon, mapping
-from shapely.ops import linemerge, unary_union
+from shapely.ops import linemerge, polygonize, unary_union
 
 ROOT = Path(__file__).resolve().parent.parent
 MIRRORS = [
@@ -78,6 +78,26 @@ out tags geom;"""
     }
 
 
+def fetch_lake(river: dict) -> dict:
+    """A lake or reservoir: its water outline from the OSM ways/relations listed in osm_ids
+    (e.g. "way/22824920"), as one (multi)polygon. Lakes have no centreline."""
+    ids = " ".join(f"{t}({i});" for t, i in (x.split("/") for x in river["osm_ids"]))
+    data = overpass(f"[out:json][timeout:80];({ids});out geom;")
+    polys = []
+    for el in data["elements"]:
+        if el["type"] == "way":
+            coords = [(p["lon"], p["lat"]) for p in el["geometry"]]
+            polys.append(Polygon(coords))
+        else:  # multipolygon relation: outer rings minus inner ones
+            ring = lambda role: unary_union(list(polygonize(
+                [LineString([(p["lon"], p["lat"]) for p in m["geometry"]]) for m in el["members"]
+                 if m["type"] == "way" and m.get("role", "outer") == role and "geometry" in m])))
+            polys.append(ring("outer").difference(ring("inner")))
+    water = unary_union([p.buffer(0) for p in polys])
+    return {"type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": {"kind": "water"}, "geometry": mapping(water)}]}
+
+
 def fetch_places(river: dict) -> dict:
     """Neighbourhood and village names, used to label river stretches ("Near Bopodi").
 
@@ -85,6 +105,8 @@ def fetch_places(river: dict) -> dict:
     outskirts, so areas count too, at their centre. A name mapped both ways is kept once.
     """
     w, s, e, n = river["bbox"]
+    if river.get("kind") == "lake":  # small: look a little further for neighbourhood names
+        w, s, e, n = w - 0.02, s - 0.02, e + 0.02, n + 0.02
     data = overpass(f"""[out:json][timeout:90];
 nwr["place"~"^(suburb|neighbourhood|quarter|village|town|hamlet)$"]["name"]({s},{w},{n},{e});
 out center tags;""")
@@ -113,7 +135,7 @@ def main():
             continue
         print(f"Fetching {river['name']}")
         if not places_only:
-            gj = fetch(river)
+            gj = fetch_lake(river) if river.get("kind") == "lake" else fetch(river)
             (out_dir / f"{river['id']}.geojson").write_text(json.dumps(gj))
             print(f"  saved data/rivers/{river['id']}.geojson")
         places = fetch_places(river)

@@ -64,6 +64,12 @@ def load_river(river: dict, det: dict):
     gj = json.loads((ROOT / f"data/rivers/{river['id']}.geojson").read_text())
     geoms = {f["properties"]["kind"]: shape(f["geometry"]) for f in gj["features"]}
     clip = box(*river["bbox"])
+    if river.get("kind") == "lake":
+        # A lake: its outline stands in for the centreline (make_segments cuts it into zones and
+        # build_river_mask keeps water within channel_m of it). The search area reaches beyond the
+        # mapped shore, which a reservoir's water level moves.
+        water = to_utm(geoms["water"].intersection(clip))
+        return water, water.buffer(-RES), water.buffer(det["corridor_m"])
     line = to_utm(geoms["centreline"].intersection(clip))
     water = to_utm(geoms["water"].intersection(clip))
     # Use mapped water area where OSM has it, a buffered centreline elsewhere,
@@ -76,6 +82,18 @@ def load_river(river: dict, det: dict):
 
 
 def make_segments(line, seg_len: float):
+    """A river's centreline cut into stretches of about seg_len; a lake's outline (a polygon) cut
+    into square zones of seg_len, in rows from the north-west (small slivers are left to their
+    neighbours: every pixel goes to the nearest zone)."""
+    if line.geom_type in ("Polygon", "MultiPolygon"):
+        minx, miny, maxx, maxy = line.bounds
+        zones = []
+        for y in np.arange(maxy, miny, -seg_len):
+            for x in np.arange(minx, maxx, seg_len):
+                cell = line.intersection(box(x, y - seg_len, x + seg_len, y))
+                if cell.area >= 0.15 * seg_len * seg_len:
+                    zones.append(cell)
+        return zones
     segs = []
     for part in getattr(line, "geoms", [line]):
         n = max(1, round(part.length / seg_len))
@@ -141,8 +159,12 @@ def classify(px, det):
 
 
 def river_det(river, cfg):
-    """Detection settings for one river: the shared ones plus its own pure-mat NDVI."""
-    return {**cfg["detection"], "mat_ndvi": river["mat_ndvi"]}
+    """Detection settings for one river: the shared ones plus its own pure-mat NDVI (and, for a
+    lake, its zone size in place of the stretch length)."""
+    det = {**cfg["detection"], "mat_ndvi": river["mat_ndvi"]}
+    if river.get("zone_m"):
+        det["segment_length_m"] = river["zone_m"]
+    return det
 
 
 def cover_fraction(ndvi, water_ndvi, det, scale=1.0):
@@ -173,21 +195,23 @@ def river_mask_path(river_id: str) -> Path:
     return ROOT / f"data/masks/{river_id}.tif"
 
 
-def river_area(river_id: str, tf, w, h, mask, aoi):
+def river_area(river_id: str, tf, w, h, mask, aoi, lake=False):
     """(river pixels, green-channel classes, whether they come from the satellite-derived mask).
 
     Uses data/masks/<river>.tif (where the images actually showed water, see
     build_river_mask.py), or the OpenStreetMap outline until that has been built. Green-channel
     pixels (inside the outline, green all year, never open water) are not measured, only reported;
     their class is the flood test: 2 survived the floods in place, 3 cleared by one, 4 unclear,
-    0 elsewhere.
+    0 elsewhere. A lake is not flushed by floods, so a mat can stay all year: there the green-all-
+    year area is measured as part of the lake (and flagged), not left out.
     """
     path = river_mask_path(river_id)
     if path.exists():
         with rasterio.open(path) as src:
             if (src.width, src.height) == (w, h) and src.transform.almost_equals(tf):
                 m = src.read(1)
-                return (m == 1) & mask, np.where(mask & (m >= 2), m, 0), True
+                water = (m >= 1) if lake else (m == 1)
+                return water & mask, np.where(mask & (m >= 2), m, 0), True
         print("  river mask does not match the grid; rebuild it with build_river_mask.py")
     osm = rasterize([(aoi, 1)], out_shape=(h, w), transform=tf, dtype="uint8").astype(bool) & mask
     return osm, np.zeros(osm.shape, "uint8"), False
@@ -340,13 +364,15 @@ def update_radar(river, rad, history, since, until, tf, w, h, mask, save):
         save()
 
 
-def run_river(river, cfg, since: date | None):
-    det, rad = river_det(river, cfg), cfg.get("radar")
+def river_layout(river, cfg):
+    """Everything about a river's (or lake's) pixels that doesn't change from image to image: its
+    grid, which pixels count, their stretch or zone, and the per-stretch area figures write_web needs."""
+    det = river_det(river, cfg)
+    lake = river.get("kind") == "lake"
     line, aoi, corridor = load_river(river, det)
     segments = make_segments(line, det["segment_length_m"])
     tf, w, h, mask = make_grid(corridor)
-    river_px, green_ch, from_images = river_area(river["id"], tf, w, h, mask, aoi)
-    area_id = hashlib.sha1(np.packbits(river_px).tobytes()).hexdigest()[:12]
+    river_px, green_ch, from_images = river_area(river["id"], tf, w, h, mask, aoi, lake=lake)
     keep = river_px[mask]
     # Pixels on the edge of the river area mix water and bank, so they are less reliable.
     inner = river_px.copy()
@@ -355,12 +381,33 @@ def run_river(river, cfg, since: date | None):
     inner[:, 1:] &= river_px[:, :-1]
     inner[:, :-1] &= river_px[:, 1:]
     edge = (river_px & ~inner)[mask]
-
-    # Assign every river pixel to its nearest segment once.
+    # Assign every pixel to its nearest segment once.
     rows, cols = np.nonzero(mask)
     xs, ys = rasterio.transform.xy(tf, rows, cols)
-    tree = STRtree(segments)
-    seg_idx = tree.query_nearest(points(xs, ys), return_distance=False, all_matches=False)[1]
+    seg_idx = STRtree(segments).query_nearest(points(xs, ys), return_distance=False, all_matches=False)[1]
+    n = len(segments)
+    green = np.bincount(seg_idx[green_ch[mask] > 0], minlength=n)
+    none = np.zeros(n, int)
+    area = {
+        "px": np.bincount(seg_idx[keep], minlength=n),
+        "edge_px": np.bincount(seg_idx[keep & edge], minlength=n),
+        # River: green channel, left out and flood-tested. Lake: measured, only flagged (green_all_year).
+        "green_px": none if lake else green,
+        "perennial_px": green if lake else none,
+        # Flood test for the green channel, per segment: survived / cleared / unclear pixels.
+        "flood_px": {k: none if lake else np.bincount(seg_idx[green_ch[mask] == v], minlength=n)
+                     for k, v in (("survived", 2), ("cleared", 3), ("unclear", 4))},
+        "from_images": from_images}
+    return {"det": det, "line": line, "aoi": aoi, "segments": segments, "tf": tf, "w": w, "h": h, "mask": mask,
+            "river_px": river_px, "keep": keep, "seg_idx": seg_idx, "area": area}
+
+
+def run_river(river, cfg, since: date | None):
+    rad = cfg.get("radar")
+    lay = river_layout(river, cfg)
+    det, segments, tf, w, h, mask = lay["det"], lay["segments"], lay["tf"], lay["w"], lay["h"], lay["mask"]
+    river_px, keep, seg_idx = lay["river_px"], lay["keep"], lay["seg_idx"]
+    area_id = hashlib.sha1(np.packbits(river_px).tobytes()).hexdigest()[:12]
 
     hist_path = ROOT / f"data/history/{river['id']}.json"
     history = json.loads(hist_path.read_text()) if hist_path.exists() else {"dates": {}, "skipped": []}
@@ -423,15 +470,7 @@ def run_river(river, cfg, since: date | None):
 
     if history["dates"]:
         update_rainfall(river, min(history["dates"]), max(history["dates"]))
-    n = len(segments)
-    write_web(river, cfg, segments, history, area={
-        "px": np.bincount(seg_idx[keep], minlength=n),
-        "edge_px": np.bincount(seg_idx[keep & edge], minlength=n),
-        "green_px": np.bincount(seg_idx[green_ch[mask] > 0], minlength=n),
-        # Flood test for the green channel, per segment: survived / cleared / unclear pixels.
-        "flood_px": {k: np.bincount(seg_idx[green_ch[mask] == v], minlength=n)
-                     for k, v in (("survived", 2), ("cleared", 3), ("unclear", 4))},
-        "from_images": from_images})
+    write_web(river, cfg, segments, history, area=lay["area"])
 
 
 def segment_places(river, segments, max_dist_m=3000):
@@ -444,7 +483,8 @@ def segment_places(river, segments, max_dist_m=3000):
     tree = STRtree(pts)
     names = []
     for seg in segments:
-        mid = seg.interpolate(0.5, normalized=True)
+        mid = seg.representative_point() if seg.geom_type in ("Polygon", "MultiPolygon") \
+            else seg.interpolate(0.5, normalized=True)
         j = tree.nearest(mid)
         p = feats[j]["properties"]
         dist = pts[j].distance(mid)
@@ -554,18 +594,21 @@ def outlook(dates, matrix, river_pct, cfg):
     }, seg_out
 
 
-def confidence(px, edge_px, green_px, from_images, stale, cfg):
+def confidence(px, edge_px, green_px, from_images, stale, cfg, perennial_px=0):
     """How far to trust one segment's numbers: ("high" | "medium" | "low", reasons).
 
     Reasons: "small" (little river area to measure), "edges" (mostly pixels on the river edge,
     which mix water and bank), "green_channel" (much of the channel is green all year and not
     measured), "outline" (river area from the OSM outline, not seen from space), "stale" (no
-    clear view for over a month).
+    clear view for over a month), "green_all_year" (a lake zone much of which is green all year:
+    measured, but it may be rooted marsh plants rather than floating weed).
     """
     reasons = []
     edge_share = edge_px / px if px else 1
     if green_px / (px + green_px) >= cfg["green_channel_share"]:
         reasons.append("green_channel")
+    if px and perennial_px / px >= cfg["green_channel_share"]:
+        reasons.append("green_all_year")
     if px < cfg["high_px"]:
         reasons.append("small")
     if edge_share > cfg["high_edge_share"]:
@@ -745,11 +788,13 @@ def reject_dates(history, dates, cfg):
     return out
 
 
-def one_off_jumps(dates, hy, cfg):
+def one_off_jumps(dates, hy, cfg, noise=0.0):
     """(spike, unconfirmed): readings that jump away and straight back, and latest readings
-    that jump with no later image yet to confirm them. hy: % per date x segment (NaN = none)."""
+    that jump with no later image yet to confirm them. hy: % per date x segment (NaN = none).
+    A jump must exceed spike_pts and 3x the water body's repeat noise (noise, a standard
+    deviation): a small lake's zones wobble far more than a river's stretches."""
     t = np.array([date.fromisoformat(d).toordinal() for d in dates])
-    th = cfg["spike_pts"]
+    th = max(cfg["spike_pts"], 3 * noise)
     spike = np.zeros(hy.shape, bool)
     unconfirmed = np.zeros(hy.shape[1], bool)
     for k in range(hy.shape[1]):
@@ -890,13 +935,17 @@ def muddy_rain_check(dates, history, rain, dry, cfg):
             "median_change": round(float(np.median(diffs)), 3) if diffs else None}
 
 
-def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct):
+def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct, noise=0.0):
     """Recent changes worth telling someone about, newest first.
 
     "above": a stretch crossed alert_pct from below; "spread": it rose by spread_pts or more within
     3 weeks; "cleanup": a probable clean-up (see cleanup_events). Low-confidence stretches and a
-    latest reading that jumped and is not yet confirmed by another image are left out.
+    latest reading that jumped and is not yet confirmed by another image are left out. noise: the
+    repeat noise of one reading (standard deviation); a crossing must clear the level by it on
+    both sides and a spread must exceed 3x it, so a noisy water body (a small lake's zones wobble
+    by ±9 points) doesn't alert on wobbles.
     """
+    spread = max(cfg["spread_pts"], 3 * noise)
     t = np.array([date.fromisoformat(d).toordinal() for d in dates])
     since = t[-1] - cfg["days"]
     out = []
@@ -908,8 +957,8 @@ def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct):
             if t[b] < since or t[b] - t[a] > 21 or (b == len(dates) - 1 and unconfirmed[k]):
                 continue
             before, after = hy[a, k], hy[b, k]
-            kind = ("above" if before < alert_pct <= after
-                    else "spread" if after - before >= cfg["spread_pts"] else None)
+            kind = ("above" if before < alert_pct - noise and after >= alert_pct + noise
+                    else "spread" if after - before >= spread else None)
             if kind:
                 out.append({"date": dates[b], "type": kind, "segment": int(k), "from_date": dates[a],
                             "from_pct": round(float(before), 1), "to_pct": round(float(after), 1)})
@@ -1050,7 +1099,7 @@ def write_web(river, cfg, segments, history, area):
         return np.array([[np.nan if v is None else v[j] * 100 for v in history["dates"][d]["segments"]]
                          for d in dates])
     hy_raw, hy_strict, hy_loose = matrix(0), matrix(2), matrix(3)
-    spike, unconfirmed = one_off_jumps(dates, hy_raw, qual)
+    spike, unconfirmed = one_off_jumps(dates, hy_raw, qual, repeat_noise(dates, list(hy_raw))[0] or 0.0)
     hy = np.where(spike, np.nan, hy_raw)  # one-off jumps are shown but not used in any figure
 
     last = date.fromisoformat(dates[-1])
@@ -1075,7 +1124,7 @@ def write_web(river, cfg, segments, history, area):
         if latest[k] is not None:
             stale = (last - date.fromisoformat(dates[latest[k]])).days > 30
             conf[k] = confidence(int(area["px"][k]), int(area["edge_px"][k]), int(area["green_px"][k]),
-                                 area["from_images"], stale, cfg["confidence"])
+                                 area["from_images"], stale, cfg["confidence"], int(area["perennial_px"][k]))
     z80 = 1.2816  # half-width of an 80% range, in standard deviations
     river_sigma, river_pairs = repeat_noise(dates, [np.array([v]) for v in river_pct])
     seg_sigma = {}
@@ -1090,8 +1139,8 @@ def write_web(river, cfg, segments, history, area):
     mud_cfg = cfg.get("muddy")
     dry = dry_days(dates, rain, mud_cfg) if mud_cfg else set()
     muddier = muddier_stretches(dates, history, dry, mud_cfg) if mud_cfg else {}
-    alert_list = alerts(dates, hy, unconfirmed, conf, events, cfg["alerts"], cfg["outlook"]["alert_pct"]) \
-        if cfg.get("alerts") else []
+    alert_list = alerts(dates, hy, unconfirmed, conf, events, cfg["alerts"], cfg["outlook"]["alert_pct"],
+                        seg_sigma["high"][0] or seg_sigma["medium"][0] or 0.0) if cfg.get("alerts") else []
 
     def likely(lo_val, hi_val, sigma):
         pad = z80 * (sigma or 0)
@@ -1108,6 +1157,8 @@ def write_web(river, cfg, segments, history, area):
                 # Channel green on nearly every clear image: weed or riverbed plants. The flood test
                 # says which: floating hyacinth is washed out by the monsoon, rooted plants stay.
                 "green_channel_ha": round(float(area["green_px"][i]) * RES * RES / 1e4, 1),
+                # Lakes: area green on nearly every clear image (measured, see confidence).
+                "green_all_year_ha": round(float(area["perennial_px"][i]) * RES * RES / 1e4, 1),
                 "flood_test": flood_verdict({k: int(v[i]) for k, v in area["flood_px"].items()})}
         if latest[i] is None:
             # Shown greyed out with the reason, rather than silently missing from the map.
@@ -1178,7 +1229,9 @@ def write_web(river, cfg, segments, history, area):
                                river_sigma),
                "scene": history["dates"][d]["scenes"][0]} for d in dates]
     out = {
-        "river": {"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"), "bbox": river["bbox"]},
+        "river": {"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"), "bbox": river["bbox"],
+                  "kind": river.get("kind", "river"), "zone_m": river.get("zone_m"),
+                  "reservoir": bool(river.get("reservoir"))},
         "updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "latest_date": dates[-1],
         "thresholds": {"hyacinth_ndvi": det["hyacinth_ndvi"], "turbid_ndti": det["turbid_ndti"],
@@ -1280,6 +1333,7 @@ def write_web(river, cfg, segments, history, area):
     index["rivers"] = [r for r in index["rivers"] if r["id"] != river["id"]]
     # version: changes whenever the river's data does, so open dashboards know to reload it.
     index["rivers"].append({"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"),
+                            "kind": river.get("kind", "river"),
                             "latest_date": dates[-1], "version": hashlib.sha1(text.encode()).hexdigest()[:12]})
     # Same order as config/rivers.yaml: the first river is the one the dashboard opens on.
     order = [r["id"] for r in cfg["rivers"]]

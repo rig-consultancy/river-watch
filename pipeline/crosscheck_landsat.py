@@ -35,7 +35,7 @@ def build(river, cfg, new_only=False, max_days=1):
     det = river_det(river, cfg)
     line, aoi, corridor = load_river(river, det)
     tf, w, h, mask = make_grid(corridor)
-    river_px, _, _ = river_area(river["id"], tf, w, h, mask, aoi)
+    river_px, _, _ = river_area(river["id"], tf, w, h, mask, aoi, lake=river.get("kind") == "lake")
     area_id = hashlib.sha1(np.packbits(river_px).tobytes()).hexdigest()[:12]
     out = ROOT / f"data/validation/{river['id']}-landsat.json"
     old = json.loads(out.read_text()) if out.exists() else None

@@ -15,11 +15,25 @@
     <summary>weed above 15% (1.0% → 18.2%) (2026-11-09 to 2026-11-11). मुळा-मुठा (पुणे), म्हाळुंगे जवळ: जलपर्णी 15% पेक्षा जास्त (1.0% → 18.2%).</summary>
   </entry>
   <entry>
-    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/7/2026-11-11</id>
-    <title>Mula-Mutha (Pune), Near Mhalunge: weed above 15% (0.9% → 15.9%)</title>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/spread/7/2026-11-11</id>
+    <title>Mula-Mutha (Pune), Near Mhalunge: weed spread (0.9% → 15.9%)</title>
     <updated>2026-11-11T00:00:00Z</updated>
     <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=8"/>
-    <summary>weed above 15% (0.9% → 15.9%) (2026-11-09 to 2026-11-11). मुळा-मुठा (पुणे), म्हाळुंगे जवळ: जलपर्णी 15% पेक्षा जास्त (0.9% → 15.9%).</summary>
+    <summary>weed spread (0.9% → 15.9%) (2026-11-09 to 2026-11-11). मुळा-मुठा (पुणे), म्हाळुंगे जवळ: जलपर्णी वाढली (0.9% → 15.9%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/above/39/2026-11-11</id>
+    <title>Khadakwasla Reservoir, Near Malkhed: weed above 15% (11.1% → 15.9%)</title>
+    <updated>2026-11-11T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=40"/>
+    <summary>weed above 15% (11.1% → 15.9%) (2026-11-09 to 2026-11-11). खडकवासला जलाशय, मलखेड जवळ: जलपर्णी 15% पेक्षा जास्त (11.1% → 15.9%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/spread/38/2026-11-11</id>
+    <title>Khadakwasla Reservoir, Near Sangrun: weed spread (28.7% → 39.5%)</title>
+    <updated>2026-11-11T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=39"/>
+    <summary>weed spread (28.7% → 39.5%) (2026-11-09 to 2026-11-11). खडकवासला जलाशय, संगरूण जवळ: जलपर्णी वाढली (28.7% → 39.5%).</summary>
   </entry>
   <entry>
     <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/32/2026-11-09</id>
@@ -50,18 +64,109 @@
     <summary>weed spread (0.0% → 10.3%) (2026-10-30 to 2026-11-04). मुळा-मुठा (पुणे), खडकी जवळ: जलपर्णी वाढली (0.0% → 10.3%).</summary>
   </entry>
   <entry>
-    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/33/2026-11-04</id>
-    <title>Mula-Mutha (Pune), Near Khadki: weed above 15% (13.7% → 15.0%)</title>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/above/55/2026-11-04</id>
+    <title>Khadakwasla Reservoir, Near Sangrun: weed above 15% (12.4% → 27.3%)</title>
     <updated>2026-11-04T00:00:00Z</updated>
-    <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=34"/>
-    <summary>weed above 15% (13.7% → 15.0%) (2026-10-30 to 2026-11-04). मुळा-मुठा (पुणे), खडकी जवळ: जलपर्णी 15% पेक्षा जास्त (13.7% → 15.0%).</summary>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=56"/>
+    <summary>weed above 15% (12.4% → 27.3%) (2026-10-30 to 2026-11-04). खडकवासला जलाशय, संगरूण जवळ: जलपर्णी 15% पेक्षा जास्त (12.4% → 27.3%).</summary>
   </entry>
   <entry>
-    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/above/33/2026-10-25</id>
-    <title>Mula-Mutha (Pune), Near Khadki: weed above 15% (1.5% → 15.8%)</title>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/pashan-lake/spread/11/2026-11-04</id>
+    <title>Pashan Lake, Near Ramnagar Colony: weed spread (4.2% → 81.1%)</title>
+    <updated>2026-11-04T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=pashan-lake&amp;stretch=12"/>
+    <summary>weed spread (4.2% → 81.1%) (2026-10-30 to 2026-11-04). पाषाण तलाव, रामनगर कॉलनी जवळ: जलपर्णी वाढली (4.2% → 81.1%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/6/2026-11-04</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (51.6% → 100.0%)</title>
+    <updated>2026-11-04T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=7"/>
+    <summary>weed spread (51.6% → 100.0%) (2026-10-30 to 2026-11-04). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (51.6% → 100.0%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/3/2026-11-04</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (68.9% → 94.6%)</title>
+    <updated>2026-11-04T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=4"/>
+    <summary>weed spread (68.9% → 94.6%) (2026-10-30 to 2026-11-04). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (68.9% → 94.6%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/cleanup/54/2026-10-30</id>
+    <title>Khadakwasla Reservoir, Near Sonapur: probable clean-up (16.2% → 2.8%)</title>
+    <updated>2026-10-30T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=55"/>
+    <summary>probable clean-up (16.2% → 2.8%) (2026-10-25 to 2026-10-30). खडकवासला जलाशय, सोनपूर जवळ: संभाव्य स्वच्छता (16.2% → 2.8%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/cleanup/50/2026-10-30</id>
+    <title>Khadakwasla Reservoir, Near Malkhed: probable clean-up (12.0% → 2.0%)</title>
+    <updated>2026-10-30T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=51"/>
+    <summary>probable clean-up (12.0% → 2.0%) (2026-10-25 to 2026-10-30). खडकवासला जलाशय, मलखेड जवळ: संभाव्य स्वच्छता (12.0% → 2.0%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/3/2026-10-30</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (51.6% → 68.9%)</title>
+    <updated>2026-10-30T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=4"/>
+    <summary>weed spread (51.6% → 68.9%) (2026-10-25 to 2026-10-30). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (51.6% → 68.9%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/spread/33/2026-10-25</id>
+    <title>Mula-Mutha (Pune), Near Khadki: weed spread (1.5% → 15.8%)</title>
     <updated>2026-10-25T00:00:00Z</updated>
     <link href="https://rig-consultancy.github.io/river-watch/?river=mula-mutha-pune&amp;stretch=34"/>
-    <summary>weed above 15% (1.5% → 15.8%) (2026-10-20 to 2026-10-25). मुळा-मुठा (पुणे), खडकी जवळ: जलपर्णी 15% पेक्षा जास्त (1.5% → 15.8%).</summary>
+    <summary>weed spread (1.5% → 15.8%) (2026-10-20 to 2026-10-25). मुळा-मुठा (पुणे), खडकी जवळ: जलपर्णी वाढली (1.5% → 15.8%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/above/56/2026-10-25</id>
+    <title>Khadakwasla Reservoir, Near Wasavewadi: weed above 15% (9.0% → 17.7%)</title>
+    <updated>2026-10-25T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=57"/>
+    <summary>weed above 15% (9.0% → 17.7%) (2026-10-20 to 2026-10-25). खडकवासला जलाशय, Wasavewadi जवळ: जलपर्णी 15% पेक्षा जास्त (9.0% → 17.7%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/spread/55/2026-10-25</id>
+    <title>Khadakwasla Reservoir, Near Sangrun: weed spread (20.4% → 37.4%)</title>
+    <updated>2026-10-25T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=56"/>
+    <summary>weed spread (20.4% → 37.4%) (2026-10-20 to 2026-10-25). खडकवासला जलाशय, संगरूण जवळ: जलपर्णी वाढली (20.4% → 37.4%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/above/54/2026-10-25</id>
+    <title>Khadakwasla Reservoir, Near Sonapur: weed above 15% (8.6% → 16.2%)</title>
+    <updated>2026-10-25T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=55"/>
+    <summary>weed above 15% (8.6% → 16.2%) (2026-10-20 to 2026-10-25). खडकवासला जलाशय, सोनपूर जवळ: जलपर्णी 15% पेक्षा जास्त (8.6% → 16.2%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/spread/38/2026-10-25</id>
+    <title>Khadakwasla Reservoir, Near Sangrun: weed spread (39.2% → 58.3%)</title>
+    <updated>2026-10-25T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=39"/>
+    <summary>weed spread (39.2% → 58.3%) (2026-10-20 to 2026-10-25). खडकवासला जलाशय, संगरूण जवळ: जलपर्णी वाढली (39.2% → 58.3%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/3/2026-10-25</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (14.3% → 51.6%)</title>
+    <updated>2026-10-25T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=4"/>
+    <summary>weed spread (14.3% → 51.6%) (2026-10-20 to 2026-10-25). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (14.3% → 51.6%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/7/2026-10-20</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (73.1% → 84.7%)</title>
+    <updated>2026-10-20T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=8"/>
+    <summary>weed spread (73.1% → 84.7%) (2026-10-15 to 2026-10-20). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (73.1% → 84.7%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/6/2026-10-20</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (23.9% → 45.8%)</title>
+    <updated>2026-10-20T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=7"/>
+    <summary>weed spread (23.9% → 45.8%) (2026-10-15 to 2026-10-20). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (23.9% → 45.8%).</summary>
   </entry>
   <entry>
     <id>tag:rig-consultancy.github.io,2026:river-watch/mula-mutha-pune/cleanup/26/2026-10-15</id>
@@ -78,10 +183,38 @@
     <summary>probable clean-up (13.2% → 0.5%) (2026-10-10 to 2026-10-15). मुळा-मुठा (पुणे), पिंपळे निलख जवळ: संभाव्य स्वच्छता (13.2% → 0.5%).</summary>
   </entry>
   <entry>
-    <id>tag:rig-consultancy.github.io,2026:river-watch/pawana-pcmc/above/27/2026-10-05</id>
-    <title>Pawana (Pimpri-Chinchwad), Near Punawale: weed above 15% (14.3% → 18.9%)</title>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/7/2026-10-15</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (57.4% → 73.1%)</title>
+    <updated>2026-10-15T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=8"/>
+    <summary>weed spread (57.4% → 73.1%) (2026-10-10 to 2026-10-15). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (57.4% → 73.1%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/7/2026-10-10</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (34.3% → 57.4%)</title>
+    <updated>2026-10-10T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=8"/>
+    <summary>weed spread (34.3% → 57.4%) (2026-10-05 to 2026-10-10). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (34.3% → 57.4%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/khadakwasla-reservoir/cleanup/20/2026-10-05</id>
+    <title>Khadakwasla Reservoir, Near Gorhe: probable clean-up (18.6% → 7.9%)</title>
     <updated>2026-10-05T00:00:00Z</updated>
-    <link href="https://rig-consultancy.github.io/river-watch/?river=pawana-pcmc&amp;stretch=28"/>
-    <summary>weed above 15% (14.3% → 18.9%) (2026-10-02 to 2026-10-05). पवना (पिंपरी-चिंचवड), पुनावळे जवळ: जलपर्णी 15% पेक्षा जास्त (14.3% → 18.9%).</summary>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=khadakwasla-reservoir&amp;stretch=21"/>
+    <summary>probable clean-up (18.6% → 7.9%) (2026-10-02 to 2026-10-05). खडकवासला जलाशय, गोऱ्हे जवळ: संभाव्य स्वच्छता (18.6% → 7.9%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/pashan-lake/above/5/2026-10-05</id>
+    <title>Pashan Lake, Near Pashan: weed above 15% (2.2% → 29.6%)</title>
+    <updated>2026-10-05T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=pashan-lake&amp;stretch=6"/>
+    <summary>weed above 15% (2.2% → 29.6%) (2026-10-02 to 2026-10-05). पाषाण तलाव, पाषाण जवळ: जलपर्णी 15% पेक्षा जास्त (2.2% → 29.6%).</summary>
+  </entry>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/katraj-lakes/spread/7/2026-10-05</id>
+    <title>Katraj Lakes, Near Katraj: weed spread (16.3% → 34.3%)</title>
+    <updated>2026-10-05T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=katraj-lakes&amp;stretch=8"/>
+    <summary>weed spread (16.3% → 34.3%) (2026-10-02 to 2026-10-05). कात्रज तलाव, कात्रज जवळ: जलपर्णी वाढली (16.3% → 34.3%).</summary>
   </entry>
 </feed>

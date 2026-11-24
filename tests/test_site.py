@@ -30,7 +30,7 @@ DYNAMIC_KEYS = {
     "flood_why_": ["rooted", "floating", "mixed", "unclear"],
     "tt_flood_": ["rooted", "floating", "mixed", "unclear"],
     "rejected_": ["haze", "cloud"],
-    "why_": ["small", "edges", "outline", "stale", "green_channel", "narrow", "no_clear_view"],
+    "why_": ["small", "edges", "outline", "stale", "green_channel", "green_all_year", "narrow", "no_clear_view"],
     "alert_": ["above", "spread", "cleanup"],
 }
 
@@ -123,7 +123,9 @@ def test_published_river_data_is_consistent(river):
         assert p["place"] or p["nearest"], f"stretch {p['id']} has no location"
         # The ward picker pairs p.wards[i] with p.regions[i].
         assert len(p["wards"]) == len(p["regions"]) and all(p["wards"]), p["id"]
-        assert len(f["geometry"]["coordinates"]) >= 2
+        g = f["geometry"]  # a river stretch is a line; a lake zone a polygon (its outline ring)
+        assert len(g["coordinates"]) >= 2 if g["type"] == "LineString" else \
+            all(len(ring) >= 4 for part in (g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]) for ring in part)
         if p["measurable"]:
             assert p["range"][0] <= p["hyacinth_pct"] <= p["range"][1] + 0.05
             assert p["date"] in dates and p["confidence"] in DYNAMIC_KEYS["conf_"]
@@ -183,30 +185,11 @@ def test_published_data_is_what_the_code_makes_from_the_committed_history(river,
     """Regenerate the dashboard file from data/history with the current code; it must match the
     published one exactly (apart from the timestamp). Catches stale data and non-determinism."""
     sys.path.insert(0, str(ROOT / "pipeline"))
-    import numpy as np
-    import rasterio
     import run
-    from shapely import STRtree, points
 
     river_cfg = next(r for r in CFG["rivers"] if r["id"] == river)
-    det = CFG["detection"]
-    line, aoi, corridor = run.load_river(river_cfg, det)
-    segments = run.make_segments(line, det["segment_length_m"])
-    tf, w, h, mask = run.make_grid(corridor)
-    river_px, green_ch, from_images = run.river_area(river, tf, w, h, mask, aoi)
-    keep = river_px[mask]
-    inner = river_px.copy()
-    inner[1:] &= river_px[:-1]; inner[:-1] &= river_px[1:]; inner[:, 1:] &= river_px[:, :-1]; inner[:, :-1] &= river_px[:, 1:]
-    edge = (river_px & ~inner)[mask]
-    rows, cols = np.nonzero(mask)
-    xs, ys = rasterio.transform.xy(tf, rows, cols)
-    seg_idx = STRtree(segments).query_nearest(points(xs, ys), return_distance=False, all_matches=False)[1]
-    k = len(segments)
-    area = {"px": np.bincount(seg_idx[keep], minlength=k), "edge_px": np.bincount(seg_idx[keep & edge], minlength=k),
-            "green_px": np.bincount(seg_idx[green_ch[mask] > 0], minlength=k),
-            "flood_px": {n: np.bincount(seg_idx[green_ch[mask] == v], minlength=k)
-                         for n, v in (("survived", 2), ("cleared", 3), ("unclear", 4))},
-            "from_images": from_images}
+    lay = run.river_layout(river_cfg, CFG)
+    segments, area = lay["segments"], lay["area"]
 
     # Write into a scratch web/ (inputs still come from the real data/).
     (tmp_path / "web/data").mkdir(parents=True)

@@ -17,11 +17,17 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 const shiftMonth = (m, n) => { const d = new Date(m + "-01T00:00:00"); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 7); };
 
+// A stretch's points whatever its shape: a river stretch is a line, a lake zone a polygon.
+const partsOf = (g) => (g.type === "LineString" ? [g.coordinates] : g.type === "Polygon" ? [g.coordinates[0]]
+  : g.type === "MultiPolygon" ? g.coordinates.map((p) => p[0]) : g.type === "MultiLineString" ? g.coordinates : [g.coordinates]);
+const pointsOf = (g) => partsOf(g).flat();
 const regionOf = (id) => data.regions.find((r) => r.id === id);
 const regionName = (r) => (r.id === "other" ? t("outside") : state.lang === "mr" ? r.name_mr || r.name : r.name);
 const inRegion = (p) => state.region === "all" || (state.region === "other" ? !p.regions.length : p.regions.includes(state.region));
 function segName(p) {
   const place = state.lang === "mr" ? p.place_mr || p.place : p.place;
+  // Lake zones share their nearest neighbourhood, so they are numbered too.
+  if (data?.river.kind === "lake") return place ? t("zone_near", { n: nf(p.id + 1, 0), place }) : t("zone", { n: nf(p.id + 1, 0) });
   if (place) return t("near", { place });
   const n = p.nearest;
   if (n) return t("from_place", { km: nf(n.km), place: state.lang === "mr" ? n.name_mr || n.name : n.name });
@@ -49,7 +55,7 @@ function stretchMeans(m) {
 function riverSvg(means) {
   const byId = new Map(means.map((s) => [s.p.id, s.v]));
   const feats = data.segments.features;
-  const pts = feats.flatMap((f) => f.geometry.coordinates);
+  const pts = feats.flatMap((f) => pointsOf(f.geometry));
   const [x0, x1] = [Math.min(...pts.map((c) => c[0])), Math.max(...pts.map((c) => c[0]))];
   const [y0, y1] = [Math.min(...pts.map((c) => c[1])), Math.max(...pts.map((c) => c[1]))];
   const W = 640, H = Math.round(W * (y1 - y0) / (x1 - x0) / Math.cos((y0 + y1) / 2 * Math.PI / 180)) || 300;
@@ -57,8 +63,10 @@ function riverSvg(means) {
   const color = (v) => (v == null ? "#c9c9c4" : v < 5 ? "#4b9bc8" : v < 15 ? "#ec8a5e" : v < 30 ? "#e0602c" : v < 50 ? "#b8451a" : "#7f2c0e");
   const lines = feats.map((f) => {
     const v = byId.get(f.properties.id), mine = inRegion(f.properties);
-    const d = f.geometry.coordinates.map((c, i) => `${i ? "L" : "M"}${sx(c[0]).toFixed(1)},${sy(c[1]).toFixed(1)}`).join("");
-    return `<path d="${d}" style="stroke:${mine ? color(v) : "var(--border)"}" stroke-width="${v >= 5 && mine ? 5 : 3}" fill="none" stroke-linecap="round"/>`;
+    const area = f.geometry.type.endsWith("Polygon");  // a lake zone: closed and filled
+    const d = partsOf(f.geometry).map((ring) => ring.map((c, i) => `${i ? "L" : "M"}${sx(c[0]).toFixed(1)},${sy(c[1]).toFixed(1)}`).join("") + (area ? "Z" : "")).join("");
+    const c = mine ? color(v) : "var(--border)";
+    return `<path d="${d}" style="stroke:${c};fill:${area ? c : "none"}" fill-opacity="0.7" stroke-width="${area ? 1 : v >= 5 && mine ? 5 : 3}" stroke-linecap="round"/>`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H + 10}" class="river-svg" role="img" aria-label="${esc(t("r_map"))}">${lines}</svg>
     <div class="legend">${[["#4b9bc8", "<5%"], ["#ec8a5e", "5–15%"], ["#e0602c", "15–30%"], ["#b8451a", "30–50%"], ["#7f2c0e", "50%+"], ["#c9c9c4", t("r_no_view")]]

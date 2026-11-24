@@ -1,0 +1,97 @@
+{
+ "dates": [
+  "2017-02-09",
+  "2018-05-25",
+  "2019-12-11",
+  "2020-10-01",
+  "2021-10-11",
+  "2023-01-14",
+  "2024-11-14",
+  "2026-11-14"
+ ],
+ "mat_ndvi_percentiles": {
+  "10": 0.536,
+  "30": 0.56,
+  "50": 0.582
+ },
+ "mat_ndvi": 0.81,
+ "pure_mat_pixels": 32742,
+ "brightness": {
+  "mat": 0.35,
+  "water": 0.1,
+  "tried": [
+   0.5,
+   2.0
+  ]
+ },
+ "big_m2": 1000,
+ "by_size": [
+  {
+   "m2": 100,
+   "trials": 152,
+   "found_share": 1.052,
+   "found_share_range": [
+    0.679,
+    1.466
+   ],
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.678
+  },
+  {
+   "m2": 300,
+   "trials": 152,
+   "found_share": 1.004,
+   "found_share_range": [
+    0.784,
+    1.234
+   ],
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.45
+  },
+  {
+   "m2": 1000,
+   "trials": 152,
+   "found_share": 0.965,
+   "found_share_range": [
+    0.842,
+    1.091
+   ],
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.261
+  },
+  {
+   "m2": 3000,
+   "trials": 152,
+   "found_share": 0.945,
+   "found_share_range": [
+    0.874,
+    1.016
+   ],
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.145
+  },
+  {
+   "m2": 10000,
+   "trials": 152,
+   "found_share": 0.932,
+   "found_share_range": [
+    0.892,
+    0.97
+   ],
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.066
+  }
+ ],
+ "big_by_confidence": {
+  "high": {
+   "trials": 455,
+   "found_share": 0.937,
+   "found_share_range": [
+    0.885,
+    0.988
+   ],
+   "seen_share": 1.0,
+   "old_rule_found_share": 1.096
+  }
+ }
+}

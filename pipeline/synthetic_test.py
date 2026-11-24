@@ -33,7 +33,7 @@ from shapely import STRtree, points
 import rasterio
 
 from run import (ROOT, RES, classify, confidence, cover_fraction, day_pixels, load_river, make_grid,
-                 make_segments, reject_dates, river_area, river_det, scene_id, search, water_ndvi)
+                 make_segments, reject_dates, river_area, river_det, river_layout, scene_id, search, water_ndvi)
 
 SUB = 5  # 2 m sub-pixels per 10 m pixel side
 
@@ -96,7 +96,7 @@ def build(river, cfg, trials=150, seed=1):
     thr = det["hyacinth_ndvi"]
     line, aoi, corridor = load_river(river, det)
     tf, w, h, mask = make_grid(corridor)
-    river_px, green_ch, from_images = river_area(river["id"], tf, w, h, mask, aoi)
+    river_px, green_ch, from_images = river_area(river["id"], tf, w, h, mask, aoi, lake=river.get("kind") == "lake")
     segments = make_segments(line, det["segment_length_m"])
     rows, cols = np.nonzero(mask)
     xs, ys = rasterio.transform.xy(tf, rows, cols)
@@ -117,13 +117,25 @@ def build(river, cfg, trials=150, seed=1):
     all_dates = sorted(hist["dates"])
     rejected = reject_dates(hist, all_dates, cfg["quality"])
     dates = [d for d in all_dates if d not in rejected]
-    # Clear, almost weed-free dates, spread over the years.
-    calm = [d for d in dates if hist["dates"][d]["hyacinth_pct"] < syn["max_background_pct"]
-            and hist["dates"][d]["valid_fraction"] >= 0.95]
+    # Clear, almost weed-free dates, spread over the years. A lake that always has weed (Pashan)
+    # has none: then its least weedy dates, with mats planted only on that day's open water.
+    clear = [d for d in dates if hist["dates"][d]["valid_fraction"] >= 0.95]
+    calm = [d for d in clear if hist["dates"][d]["hyacinth_pct"] < syn["max_background_pct"]]
+    weedy = len(calm) < syn["dates"]
+    if weedy:
+        calm = sorted(sorted(clear, key=lambda d: hist["dates"][d]["hyacinth_pct"])[:syn["dates"]])
     picks = [calm[i] for i in np.linspace(0, len(calm) - 1, min(syn["dates"], len(calm))).round().astype(int)]
     mats = dense_mat_ndvi(river, dates, hist, det, tf, w, h, mask, river_px)
     pct = {q: round(float(np.percentile(mats, q)), 3) for q in (10, 30, 50)}
-    print(f"  {len(picks)} clear dates, {len(mats)} pure mat pixels (NDVI percentiles {pct}; config {det['mat_ndvi']})")
+    print(f"  {len(picks)} {'least weedy' if weedy else 'clear'} dates, {len(mats)} pure mat pixels "
+          f"(NDVI percentiles {pct}; config {det['mat_ndvi']})")
+    if river.get("mat_from"):  # its own dense pixels aren't mats (Khadakwasla: lakebed grass)
+        other = next(r for r in cfg["rivers"] if r["id"] == river["mat_from"])
+        lay = river_layout(other, cfg)
+        oh = json.loads((ROOT / f"data/history/{other['id']}.json").read_text())
+        od = [d for d in sorted(oh["dates"]) if d not in reject_dates(oh, sorted(oh["dates"]), cfg["quality"])]
+        mats = dense_mat_ndvi(other, od, oh, lay["det"], lay["tf"], lay["w"], lay["h"], lay["mask"], lay["river_px"])
+        print(f"  planting mats from {other['name']} ({len(mats)} pure mat pixels)")
 
     ratios = (1.0, 0.5, 2.0)  # mat brightness as configured, then at half and double
     rng = np.random.default_rng(seed)
@@ -135,10 +147,12 @@ def build(river, cfg, trials=150, seed=1):
         bg[mask] = px["ndvi"]
         _, _, water = classify(px, det)
         nw = water_ndvi(px, water & river_px[mask], det)  # as the pipeline sees that day
+        where = (river_px & (np.nan_to_num(bg, nan=1) <= det["hyacinth_ndvi"])) if weedy else river_px
+        cells_ok = np.argwhere(where) if weedy else river_cells
         for size in syn["sizes_m2"]:
             for _ in range(trials // len(picks) + 1):
-                r0, c0 = river_cells[rng.integers(len(river_cells))]
-                cover = plant(river_px, rng, size, (r0, c0))
+                r0, c0 = cells_ok[rng.integers(len(cells_ok))]
+                cover = plant(where, rng, size, (r0, c0))
                 cells = list(cover)
                 if not cells:
                     continue

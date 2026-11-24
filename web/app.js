@@ -37,6 +37,8 @@ function applyStaticText() {
 // ---------- names ----------
 function segName(p) {
   const place = state.lang === "mr" ? p.place_mr || p.place : p.place;
+  // Lake zones share their nearest neighbourhood, so they are numbered too.
+  if (current?.river.kind === "lake") return place ? t("zone_near", { n: nf(p.id + 1, 0), place }) : t("zone", { n: nf(p.id + 1, 0) });
   if (place) return t("near", { place });
   const n = p.nearest;
   if (n) return t("from_place", { km: nf(n.km), place: state.lang === "mr" ? n.name_mr || n.name : n.name });
@@ -116,7 +118,14 @@ function drawLegend() {
 // Value of a segment on the date at slider position idx (null: clouds that day).
 const valueAt = (id) => current.segment_history.hyacinth_pct[idx][id];
 
+// Lake zones are areas: filled in the same colour, more faintly than their outline.
 function segStyle(f) {
+  const st = lineStyle(f);
+  return f.geometry.type.endsWith("Polygon") ? { ...st, weight: Math.min(st.weight, 2), fill: true, fillColor: st.color,
+    fillOpacity: st.opacity * (st.dashArray ? 0.25 : 0.6) } : st;
+}
+
+function lineStyle(f) {
   const p = f.properties, v = valueAt(p.id), mine = inView(p);
   // Flood test says "rooted": almost certainly not hyacinth, so it recedes; otherwise it stands out.
   if (greenChannel(p) && p.flood_test?.verdict === "rooted")
@@ -158,10 +167,15 @@ function confBadge(p, long) {
     (long && why ? `<span class="conf-why">${why}</span>` : "");
 }
 
+// A stretch's points whatever its shape: a river stretch is a line, a lake zone a polygon.
+const partsOf = (g) => (g.type === "LineString" ? [g.coordinates] : g.type === "Polygon" ? [g.coordinates[0]]
+  : g.type === "MultiPolygon" ? g.coordinates.map((p) => p[0]) : g.type === "MultiLineString" ? g.coordinates : [g.coordinates]);
+const pointsOf = (g) => partsOf(g).flat();
+
 // The Sentinel-2 photo behind a date, cropped around a stretch (Planetary Computer's free tiler).
 const sceneOn = (d) => current.series.find((s) => s.date === d)?.scene;
 function photoUrl(scene, f, padDeg = 0.006) {
-  const xs = f.geometry.coordinates.map((c) => c[0]), ys = f.geometry.coordinates.map((c) => c[1]);
+  const pts = pointsOf(f.geometry), xs = pts.map((c) => c[0]), ys = pts.map((c) => c[1]);
   const bb = [Math.min(...xs) - padDeg, Math.min(...ys) - padDeg, Math.max(...xs) + padDeg, Math.max(...ys) + padDeg]
     .map((v) => v.toFixed(4)).join(",");
   return `https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/${bb}.png?collection=sentinel-2-l2a` +
@@ -169,11 +183,11 @@ function photoUrl(scene, f, padDeg = 0.006) {
 }
 // ESA's own viewer at this place and date, as an independent second look.
 function esaUrl(f, d) {
-  const c = f.geometry.coordinates[Math.floor(f.geometry.coordinates.length / 2)];
+  const pts = pointsOf(f.geometry), c = pts[Math.floor(pts.length / 2)];
   return `https://browser.dataspace.copernicus.eu/?zoom=15&lat=${c[1]}&lng=${c[0]}&datasetId=S2_L2A_CDAS` +
     `&fromTime=${d}T00%3A00%3A00.000Z&toTime=${d}T23%3A59%3A59.999Z&layerId=1_TRUE_COLOR`;
 }
-const riverFeature = () => ({ geometry: { coordinates: current.segments.features.flatMap((f) => f.geometry.coordinates) } });
+const riverFeature = () => ({ geometry: { type: "LineString", coordinates: current.segments.features.flatMap((f) => pointsOf(f.geometry)) } });
 
 function segTip(p) {
   if (!p.measurable) return `<div class="tt-title">${segName(p)} · ${segAreaLabel(p)}</div><div>${t(`why_${p.why}`)}</div>` +
@@ -192,7 +206,7 @@ function drawSegments(fit) {
   // The whole river as one faint line underneath, so stretches in other areas, too narrow to
   // measure or under cloud never leave a gap.
   riverLine = L.geoJSON(current.segments, { interactive: false,
-    style: { color: css("--clear"), weight: 3, opacity: 0.45, lineCap: "round" } }).addTo(map);
+    style: { color: css("--clear"), weight: isLake() ? 1 : 3, opacity: 0.45, lineCap: "round", fillOpacity: 0.06 } }).addTo(map);
   segLayer = L.geoJSON(current.segments, {
     style: segStyle,
     onEachFeature: (f, layer) => {
@@ -266,7 +280,7 @@ function drawList() {
   const waiting = current.segments.features.filter((f) => inView(f.properties) && f.properties.unconfirmed).length;
   const look = current.outlook;
   $("list-hint").textContent = (listMode === "risk" && look?.alert_pct
-    ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : t("hint_list")) +
+    ? t("hint_risk", { a: nf(look.alert_pct, 0) }) : isLake() ? t("hint_list_lake", { m: nf(current.river.zone_m, 0) }) : t("hint_list")) +
     (waiting ? " " + t("hint_unconfirmed", { n: nf(waiting, 0) }) : "");
   if (listMode === "alerts") return drawAlerts(list);
   if (listMode === "muddy") return drawMuddier(list);
@@ -367,7 +381,7 @@ function drawDetail() {
     fact(t("f_change"), change),
     p.outlook ? fact(t("f_outlook"), `~${nf(p.outlook.pct)}%`) : "",
     p.outlook && look?.alert_pct ? fact(t("f_chance", { a: nf(look.alert_pct, 0) }), `${nf(p.outlook.p_alert * 100, 0)}%`) : "",
-    fact(t("f_km"), t("km_val", { km: nf(p.km) })),
+    isLake() ? "" : fact(t("f_km"), t("km_val", { km: nf(p.km) })),
     fact(t("f_conf"), confBadge(p, true)),
     p.area_ha != null ? fact(t("f_area_ha"), t("ha_val", { ha: nf(p.area_ha) })) : "",
     p.green_channel_ha ? fact(t("f_green_channel"), t("ha_val", { ha: nf(p.green_channel_ha) })) : "",
@@ -525,9 +539,13 @@ function setDelta(el, d) {
 
 // When the weed season usually takes off and peaks (from past seasons), and where this one is.
 function drawSeason() {
-  const low = current.low_confidence_share ?? 0;
-  $("narrow").hidden = low <= 0.35;  // the Pawana: half; the others: 4% and 12%
-  $("narrow").innerHTML = `<strong>${t("narrow_title")}</strong> ${t("narrow_text", { p: nf(low * 100, 0) })}`;
+  // A note on how to read this water body: a narrow river, a small lake, or a reservoir whose level falls.
+  const low = current.low_confidence_share ?? 0, r = current.river;
+  const note = r.reservoir ? ["reservoir_title", "reservoir_text"]
+    : low <= 0.35 ? null  // the Pawana: half; the other rivers: 4% and 12%
+    : isLake() ? ["small_lake_title", "small_lake_text"] : ["narrow_title", "narrow_text"];
+  $("narrow").hidden = !note;
+  if (note) $("narrow").innerHTML = `<strong>${t(note[0])}</strong> ${t(note[1], { p: nf(low * 100, 0) })}`;
   const se = current.season, el = $("season");
   el.hidden = !se;
   if (!se) return;
@@ -569,7 +587,8 @@ function drawTiles() {
     : gap ? t("n_pct_landsat", { date: fmtDate(gap.date), lo: nf(gap.range[0]), hi: nf(gap.range[1]), s2: fmtDate(last.date) })
     : radarLast && radarLast.date > last.date
       ? t("n_pct_radar", { date: fmtDate(last.date), rdate: fmtDate(radarLast.date), rpct: nf(radarLast.hyacinth_pct) })
-      : now?.range ? t("n_pct_range", { lo: nf(now.range[0]), hi: nf(now.range[1]) }) : t("n_pct");
+      : now?.range ? t(isLake() ? "n_pct_range_lake" : "n_pct_range", { lo: nf(now.range[0]), hi: nf(now.range[1]) })
+      : t(isLake() ? "n_pct_lake" : "n_pct");
   // Area covered: for a selected area, the latest reading of each of its stretches.
   const mine = current.segments.features.map((f) => f.properties).filter((p) => p.measurable && inRegion(p));
   const regKm2 = mine.reduce((s, p) => s + (p.hyacinth_pct / 100) * p.area_ha, 0) / 100;
@@ -794,7 +813,7 @@ function initDownloads() {
       ["stretch", "km_from_start", "place", "area", "wards", "hyacinth_pct", "last_clear_date", "change_30d_pts",
         "outlook_14d_pct", "chance_above_alert", "confidence", "confidence_reasons", "river_area_ha", "green_channel_ha", "lat", "lon"],
       current.segments.features.map((f) => {
-        const p = f.properties, c = f.geometry.coordinates[Math.floor(f.geometry.coordinates.length / 2)];
+        const p = f.properties, pts = pointsOf(f.geometry), c = pts[Math.floor(pts.length / 2)];
         return [p.id + 1, p.km, p.place, p.regions.join("+") || "outside", p.wards.join(" / "), p.hyacinth_pct, p.date,
           p.change_pct, p.outlook?.pct, p.outlook?.p_alert, p.confidence, (p.confidence_why || []).join(" ") || p.why, p.area_ha, p.green_channel_ha, c[1], c[0]];
       }));
@@ -818,10 +837,14 @@ function syncUrl() {
 
 function fillRiverSelect() {
   const sel = $("river"), keep = sel.value;
-  sel.innerHTML = riverIndex.rivers
-    .map((r) => `<option value="${r.id}">${state.lang === "mr" ? r.name_mr || r.name : r.name}</option>`).join("");
+  const opt = (r) => `<option value="${r.id}">${state.lang === "mr" ? r.name_mr || r.name : r.name}</option>`;
+  const lakes = riverIndex.rivers.filter((r) => r.kind === "lake"), rivers = riverIndex.rivers.filter((r) => r.kind !== "lake");
+  sel.innerHTML = lakes.length
+    ? `<optgroup label="${t("g_rivers")}">${rivers.map(opt).join("")}</optgroup><optgroup label="${t("g_lakes")}">${lakes.map(opt).join("")}</optgroup>`
+    : rivers.map(opt).join("");
   if (keep) sel.value = keep;
 }
+const isLake = () => current?.river.kind === "lake";
 
 function fillRegionSelect() {
   const sel = $("region");
@@ -889,6 +912,8 @@ function ago(iso) {
 // has not for 36 hours it has stopped. Otherwise an old image just means none newer was published
 // (or it was cloudy): say which, rather than show old figures as current or cry wolf.
 function drawStatus() {
+  document.querySelector('[data-i18n="u_river"]').textContent = t(isLake() ? "u_lake" : "u_river");
+  document.querySelector('[data-i18n="map_title"]').textContent = t(isLake() ? "map_title_lake" : "map_title");
   const gap = (current.gap_fill || []).at(-1);
   $("meta").textContent = t("meta", { date: fmtDate(current.latest_date), n: nf(current.series.length, 0) }) +
     (gap ? " · " + t("meta_landsat", { date: fmtDate(gap.date) }) : "") +

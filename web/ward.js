@@ -20,11 +20,17 @@ const regionName = (id) => { const r = data.regions.find((x) => x.id === id); re
 const riverName = () => (state.lang === "mr" ? data.river.name_mr || data.river.name : data.river.name);
 function segName(p) {
   const place = state.lang === "mr" ? p.place_mr || p.place : p.place;
+  // Lake zones share their nearest neighbourhood, so they are numbered too.
+  if (data?.river.kind === "lake") return place ? t("zone_near", { n: nf(p.id + 1, 0), place }) : t("zone", { n: nf(p.id + 1, 0) });
   if (place) return t("near", { place });
   const n = p.nearest;
   if (n) return t("from_place", { km: nf(n.km), place: state.lang === "mr" ? n.name_mr || n.name : n.name });
   return t("stretch", { n: nf(p.id + 1, 0) });
 }
+// A stretch's points whatever its shape: a river stretch is a line, a lake zone a polygon.
+const partsOf = (g) => (g.type === "LineString" ? [g.coordinates] : g.type === "Polygon" ? [g.coordinates[0]]
+  : g.type === "MultiPolygon" ? g.coordinates.map((p) => p[0]) : g.type === "MultiLineString" ? g.coordinates : [g.coordinates]);
+const pointsOf = (g) => partsOf(g).flat();
 const color = (v) => (v == null ? "#c9c9c4" : v < 5 ? "#4b9bc8" : v < 15 ? "#ec8a5e" : v < 30 ? "#e0602c" : v < 50 ? "#b8451a" : "#7f2c0e");
 
 // The ward's cover on every image of the last 12 months, weighted by river area like the table.
@@ -58,16 +64,18 @@ function trendSvg(rows) {
 // The whole river, the ward's stretches coloured by their latest reading, the rest grey.
 function mapSvg(w) {
   const mine = new Set(w.segments), feats = data.segments.features;
-  const pts = feats.flatMap((f) => f.geometry.coordinates);
+  const pts = feats.flatMap((f) => pointsOf(f.geometry));
   const [x0, x1] = [Math.min(...pts.map((c) => c[0])), Math.max(...pts.map((c) => c[0]))];
   const [y0, y1] = [Math.min(...pts.map((c) => c[1])), Math.max(...pts.map((c) => c[1]))];
   const W = 640, H = Math.round(W * (y1 - y0) / (x1 - x0) / Math.cos((y0 + y1) / 2 * Math.PI / 180)) || 300;
   const sx = (v) => ((v - x0) / (x1 - x0)) * (W - 20) + 10, sy = (v) => H - 10 - ((v - y0) / (y1 - y0)) * (H - 20);
   const lines = feats.map((f) => {
     const p = f.properties, own = mine.has(p.id);
-    const d = f.geometry.coordinates.map((c, i) => `${i ? "L" : "M"}${sx(c[0]).toFixed(1)},${sy(c[1]).toFixed(1)}`).join("");
+    const area = f.geometry.type.endsWith("Polygon");  // a lake zone: closed and filled
+    const d = partsOf(f.geometry).map((ring) => ring.map((c, i) => `${i ? "L" : "M"}${sx(c[0]).toFixed(1)},${sy(c[1]).toFixed(1)}`).join("") + (area ? "Z" : "")).join("");
     // Other wards in the theme's quiet border colour (white on a dark screen would drown the ward).
-    return `<path d="${d}" style="stroke:${own ? color(p.measurable ? p.hyacinth_pct : null) : "var(--border)"}" stroke-width="${own ? 6 : 2.5}" fill="none" stroke-linecap="round"/>`;
+    const c = own ? color(p.measurable ? p.hyacinth_pct : null) : "var(--border)";
+    return `<path d="${d}" style="stroke:${c};fill:${area ? c : "none"}" fill-opacity="0.7" stroke-width="${area ? 1 : own ? 6 : 2.5}" stroke-linecap="round"/>`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H + 10}" class="river-svg" role="img" aria-label="${esc(t("r_map"))}">${lines}</svg>
     <div class="legend">${[["#4b9bc8", "<5%"], ["#ec8a5e", "5–15%"], ["#e0602c", "15–30%"], ["#b8451a", "30–50%"], ["#7f2c0e", "50%+"], ["#c9c9c4", t("r_no_view")], ["var(--border)", t("wr_other_wards")]]

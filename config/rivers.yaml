@@ -23,6 +23,35 @@ rivers:
     osm_names: "Indrayani|इंद्रायणी"
     mat_ndvi: 0.84            # NDVI of a pixel fully covered by a mat (see synthetic_test.py)
 
+  # Lakes and reservoirs (kind: lake): the OSM outline (osm_ids) is cut into square zones of zone_m
+  # instead of 500 m river stretches; the water area inside it still comes from the images.
+  - id: khadakwasla-reservoir
+    name: Khadakwasla Reservoir
+    name_mr: खडकवासला जलाशय
+    kind: lake
+    reservoir: true           # its level falls through the dry season (the dashboard says so)
+    bbox: [73.66, 18.38, 73.79, 18.45]
+    osm_ids: ["way/22824920"]
+    zone_m: 500
+    mat_ndvi: 0.81            # the rivers' typical value: its own "dense" pixels (NDVI 0.56) are lakebed grass, not mats
+    mat_from: mula-mutha-pune # the planted-weed test plants that river's real mats here
+  - id: pashan-lake
+    name: Pashan Lake
+    name_mr: पाषाण तलाव
+    kind: lake
+    bbox: [73.772, 18.523, 73.796, 18.542]
+    osm_ids: ["relation/2794610"]
+    zone_m: 150
+    mat_ndvi: 0.88            # 30th percentile of its own dense mats
+  - id: katraj-lakes
+    name: Katraj Lakes
+    name_mr: कात्रज तलाव
+    kind: lake
+    bbox: [73.855, 18.438, 73.870, 18.462]
+    osm_ids: ["way/54937943", "relation/1851329"]
+    zone_m: 150
+    mat_ndvi: 0.85            # 30th percentile of its own dense mats
+
 # Detection thresholds (Sentinel-2 L2A surface reflectance).
 detection:
   max_scene_cloud: 40        # skip scenes with more cloud than this (%)

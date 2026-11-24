@@ -139,6 +139,19 @@ tests/                      uv run pytest: calculations and the published data
   Pawana: half; it is about 22 m wide in the images), the dashboard says to rely on river-wide figures.
 - **Installable app:** `manifest.webmanifest`, icons and `sw.js` let phones install the dashboard;
   pages and the last data are kept (network first), so it opens offline with a note saying so.
+- **Lakes and reservoirs:** Khadakwasla Reservoir, Pashan Lake and Katraj Lakes (`kind: lake` in the
+  config). The OSM outline (`osm_ids`, fetched by `fetch_rivers.py`) is cut into square zones of
+  `zone_m` (500 m for Khadakwasla, 150 m for the small lakes) instead of 500 m stretches; the water
+  area still comes from the images. A lake is not flushed by floods, so a mat can stay all year:
+  areas green all year are measured (and flagged "green all year": they may be rooted marsh plants)
+  rather than left out as on the rivers, where they fail the flood test. Each lake's `mat_ndvi` is
+  its own dense mats' 30th percentile (Pashan 0.88, Katraj 0.85); Khadakwasla has no real mats (its
+  dense pixels, NDVI 0.56, are lakebed grass), so it uses the rivers' 0.81 and the planted-weed test
+  plants Mula-Mutha mats there (`mat_from`). Validation: planted mats measured at 93-109% of their
+  area; Landsat correlates 0.87-0.94, within 0.3 points on Khadakwasla and about 7 on the two small,
+  heavily infested lakes. A reservoir's dry-season figures can include plants on the exposed bed (the
+  dashboard says so). Alerts and the one-off-jump filter scale with each water body's repeat noise,
+  so small lakes' noisy zones (±9 points) don't trigger them.
 - **Monthly report:** `report.html?river=&area=&month=` is a printable page (save as PDF) with the
   month's average and range, change, river map, worst stretches, drops and data quality.
 - **Downloads:** history backfills fetch 4 dates at a time into the cache (`prefetch` in run.py).
