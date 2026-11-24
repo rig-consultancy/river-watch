@@ -731,7 +731,10 @@ def cleanup_events(dates, hy, sigma, rain, cfg):
     A drop: a reading of at least min_before %, then within 3 weeks one at least drop_pts (and
     3x the noise) lower and at most half, outside the monsoon, still low on the next reading if
     there is one. Cause: "rain" if rain_mm or more fell in between, "river_wide" if many stretches
-    dropped over the same interval (flow or wind), otherwise "removal" (probable clean-up).
+    dropped over the same interval (flow or wind), "drift" if a stretch within drift_stretches gained
+    at least drift_share of the lost cover over the same interval (the mat moved, mostly downstream),
+    otherwise "removal" (probable clean-up). Probable clean-ups on neighbouring stretches over
+    overlapping days are one operation: the same "operation" number, counted once.
     regrowth_days: days until the stretch was back to half its earlier level, if seen.
     """
     t = np.array([date.fromisoformat(d).toordinal() for d in dates])
@@ -760,10 +763,41 @@ def cleanup_events(dates, hy, sigma, rain, cfg):
         days = (date.fromisoformat(e["to"]) - date.fromisoformat(e["from"])).days
         mm = rain_total(rain, e["to"], days) if rain else None
         e["rain_mm"] = None if mm is None else round(mm, 1)
+        k, lost = e["segment"], e["before"] - e["after"]
+        near = [j for j in range(k - cfg["drift_stretches"], k + cfg["drift_stretches"] + 1)
+                if j != k and 0 <= j < hy.shape[1] and np.isfinite(hy[a, j]) and np.isfinite(hy[b, j])]
+        drifted = any(hy[b, j] - hy[a, j] >= cfg["drift_share"] * lost for j in near)
         e["cause"] = ("rain" if mm is not None and mm >= cfg["rain_mm"]
                       else "river_wide" if had.sum() and same / had.sum() >= cfg["river_wide_share"]
+                      else "drift" if drifted
                       else "removal" if mm is not None else "unknown")
+    # One clean-up usually covers several stretches: join neighbouring ones whose days overlap.
+    removal = sorted((e for e in drops if e["cause"] == "removal"), key=lambda e: (e["from"], e["segment"]))
+    parent = list(range(len(removal)))
+    def root(i):
+        while parent[i] != i:
+            i = parent[i]
+        return i
+    for i, e in enumerate(removal):
+        for j in range(i):
+            o = removal[j]
+            if abs(o["segment"] - e["segment"]) <= 1 and o["from"] < e["to"] and e["from"] < o["to"]:
+                parent[root(i)] = root(j)
+    numbers = {}
+    for i, e in enumerate(removal):
+        e["operation"] = numbers.setdefault(root(i), len(numbers))
+    for e in drops:
+        e.setdefault("operation", None)
     return drops
+
+
+def operations(events):
+    """Probable clean-up operations: {number: [its stretch events]}."""
+    ops = defaultdict(list)
+    for e in events:
+        if e["cause"] == "removal":
+            ops[e["operation"]].append(e)
+    return ops
 
 
 def reject_dates(history, dates, cfg):
@@ -931,9 +965,11 @@ def alerts(dates, hy, unconfirmed, conf, events, cfg, alert_pct):
             if kind:
                 out.append({"date": dates[b], "type": kind, "segment": int(k), "from_date": dates[a],
                             "from_pct": round(float(before), 1), "to_pct": round(float(after), 1)})
-    out += [{"date": e["to"], "type": "cleanup", "segment": e["segment"], "from_date": e["from"],
-             "from_pct": e["before"], "to_pct": e["after"]}
-            for e in events if e["cause"] == "removal" and date.fromisoformat(e["to"]).toordinal() >= since]
+    for op in operations(events).values():  # one alert per operation, at its largest drop
+        e = max(op, key=lambda x: x["before"] - x["after"])
+        if date.fromisoformat(e["to"]).toordinal() >= since:
+            out.append({"date": e["to"], "type": "cleanup", "segment": e["segment"], "from_date": e["from"],
+                        "from_pct": e["before"], "to_pct": e["after"], "stretches": len(op)})
     return sorted(out, key=lambda a: (a["date"], a["segment"], a["type"]), reverse=True)
 
 
@@ -980,8 +1016,10 @@ def ward_table(dates, hy, seg_px, regions, conf, events, cfg):
         recent = np.nonzero(t > year_ago)[0]
         per_image = [weighted(hy[i, ks], ks) for i in recent]
         per_image = [v for v in per_image if v is not None]
-        mine = [e for e in events if e["cause"] == "removal" and e["segment"] in set(ks.tolist())]
-        regrow = [e["regrowth_days"] for e in mine if e["regrowth_days"] is not None]
+        # Clean-up operations touching the ward, each counted once; regrowth per operation.
+        mine = [op for op in operations(events).values() if any(e["segment"] in set(ks.tolist()) for e in op)]
+        regrow = [float(np.median([e["regrowth_days"] for e in op if e["regrowth_days"] is not None]))
+                  for op in mine if any(e["regrowth_days"] is not None for e in op)]
         latest = {int(k): float(now[j]) for j, k in enumerate(ks) if np.isfinite(now[j])}
         good = [k for k in ks if conf.get(int(k), ("low",))[0] != "low"]
         rows.append({
@@ -990,7 +1028,7 @@ def ward_table(dates, hy, seg_px, regions, conf, events, cfg):
             "now": weighted(now, ks), "last_year": weighted(before, ks),
             "avg_12m": round(float(np.mean(per_image)), 1) if len(per_image) >= cfg["min_images"] else None,
             "cleanups": len(mine),
-            "cleanups_12m": sum(1 for e in mine if date.fromisoformat(e["to"]).toordinal() > year_ago),
+            "cleanups_12m": sum(1 for op in mine if max(date.fromisoformat(e["to"]).toordinal() for e in op) > year_ago),
             # A median of one or two clean-ups says little: needs min_regrowth of them.
             "regrowth_days": int(np.median(regrow)) if len(regrow) >= cfg["min_regrowth"] else None,
             "regrowth_n": len(regrow),

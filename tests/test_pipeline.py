@@ -143,7 +143,8 @@ def test_published_dashboard_data_is_complete(path):
             assert p["range"][0] <= p["hyacinth_pct"] <= p["range"][1] + 0.05
 
 
-CLEANUP = {"min_before": 20, "drop_pts": 15, "rain_mm": 25, "river_wide_share": 0.3}
+CLEANUP = {"min_before": 20, "drop_pts": 15, "rain_mm": 25, "river_wide_share": 0.3, "drift_stretches": 2,
+           "drift_share": 0.5}
 
 
 def test_cleanup_events_label_cause_and_regrowth():
@@ -158,6 +159,15 @@ def test_cleanup_events_label_cause_and_regrowth():
     assert run.cleanup_events(dates, hy, {}, dry | {"2026-02-03": 40.0}, CLEANUP)[0]["cause"] == "rain"
     # A day with no rainfall figure yet: the cause stays unknown rather than "clean-up".
     assert run.cleanup_events(dates, hy, {}, {k: v for k, v in dry.items() if k != "2026-02-03"}, CLEANUP)[0]["cause"] == "unknown"
+    # Drift: the next stretch downstream gains what stretch 0 lost.
+    moved = hy.copy()
+    moved[:, 1] = [10, 40, 38, 30, 30, 30]
+    assert run.cleanup_events(dates, moved, {}, dry, CLEANUP)[0]["cause"] == "drift"
+    # Two neighbouring stretches cleared over the same days: one operation.
+    both = hy.copy()
+    both[:, 1] = [35, 4, 4, 5, 20, 30]
+    ev = run.cleanup_events(dates, both, {}, dry, CLEANUP)
+    assert [e["cause"] for e in ev] == ["removal", "removal"] and len({e["operation"] for e in ev}) == 1
     hy[:, 2:6] = np.array([40, 5, 5, 5, 5, 5])[:, None]  # 5 of 10 drop together: river-wide
     assert {e["cause"] for e in run.cleanup_events(dates, hy, {}, dry, CLEANUP)} == {"river_wide"}
 
@@ -205,7 +215,8 @@ def test_alerts_above_spread_cleanup_and_unconfirmed():
     hy[:, 2] = [5, 25, 26, 26, 27, 26]   # same, but a low-confidence stretch
     hy[:, 3] = [5, 5, 5, 5, 5, 40]       # latest jump, not confirmed yet
     conf = {0: ("high", []), 1: ("medium", []), 2: ("low", []), 3: ("high", [])}
-    events = [{"segment": 0, "from": "2026-03-21", "to": "2026-03-26", "before": 35, "after": 10, "cause": "removal"}]
+    events = [{"segment": 0, "from": "2026-03-21", "to": "2026-03-26", "before": 35, "after": 10, "cause": "removal",
+               "operation": 0}]
     got = run.alerts(dates, hy, np.array([False, False, False, True]), conf, events, {"days": 120, "spread_pts": 15}, 30)
     assert [(a["date"], a["type"], a["segment"]) for a in got] == [
         ("2026-03-26", "cleanup", 0), ("2026-03-11", "above", 0), ("2026-03-06", "spread", 1)]
@@ -238,8 +249,8 @@ def test_ward_table_weights_by_area_and_needs_enough_seen():
     seg_px = np.array([100, 300, 100])
     regions = [(["pmc"], ["A"]), (["pmc", "pcmc"], ["A", "Z"]), (["pcmc"], ["Z"])]  # stretch 1 on the border
     conf = {0: ("high", []), 1: ("low", []), 2: ("high", [])}
-    events = [{"segment": 0, "cause": "removal", "to": "2026-02-20", "regrowth_days": 30},
-              {"segment": 0, "cause": "rain", "to": "2026-02-20", "regrowth_days": 5}]
+    events = [{"segment": 0, "cause": "removal", "to": "2026-02-20", "regrowth_days": 30, "operation": 0},
+              {"segment": 0, "cause": "rain", "to": "2026-02-20", "regrowth_days": 5, "operation": None}]
     cfg = {"min_seen": 0.5, "now_days": 30, "year_window": 21, "min_images": 2, "min_regrowth": 1,
            "ranked_reliable": 0.5, "segment_km": 0.5}
     rows = {(r["region"], r["ward"]): r for r in run.ward_table(dates, hy, seg_px, regions, conf, events, cfg)}

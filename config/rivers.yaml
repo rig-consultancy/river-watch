@@ -94,12 +94,16 @@ quality:
 
 # Clean-up detection: sharp, lasting drops on a stretch outside the monsoon, labelled "rain"
 # (rain_mm or more in between, NASA POWER), "river_wide" (river_wide_share or more of the
-# stretches that had weed dropped together: flow or wind) or "removal" (probable clean-up).
+# stretches that had weed dropped together: flow or wind), "drift" (a nearby stretch gained the weed:
+# the mat moved) or "removal" (probable clean-up); neighbouring removals on overlapping days are one
+# clean-up operation.
 cleanup:
   min_before: 10             # % cover needed before the drop
   drop_pts: 10               # at least this many points (and 3x the stretch's noise)
   rain_mm: 25
   river_wide_share: 0.3
+  drift_stretches: 2         # "drift" when a stretch this close (each 500 m) gained ...
+  drift_share: 0.5           # ... at least this share of the lost cover over the same days
 
 # Planted-weed test (pipeline/synthetic_test.py): mats of these sizes are planted into clear,
 # almost weed-free images and measured with the normal rule. Planted pixels mix with the real ones

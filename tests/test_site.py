@@ -24,7 +24,7 @@ RIVERS = [r["id"] for r in CFG["rivers"] if not r.get("draft")]
 
 # Every value the pipeline can put in a field the page turns into text with t(`prefix_${value}`).
 DYNAMIC_KEYS = {
-    "cause_": ["removal", "rain", "river_wide", "unknown"],
+    "cause_": ["removal", "rain", "river_wide", "drift", "unknown"],
     "conf_": ["high", "medium", "low"],
     "flood_": ["rooted", "floating", "mixed", "unclear"],
     "flood_why_": ["rooted", "floating", "mixed", "unclear"],
@@ -135,6 +135,9 @@ def test_published_river_data_is_consistent(river):
     for r in d["regions"]:
         assert r["series"] and all(x["date"] in dates for x in r["series"])
         assert all(0 <= x["hyacinth_pct"] <= 100 and finite(x["turbid_pct"]) for x in r["series"])
+    # A clean-up operation is one set of neighbouring stretches; drift is never counted as one.
+    for e in d["cleanup_events"]:
+        assert (e["operation"] is not None) == (e["cause"] == "removal")
     for e in d["cleanup_events"]:
         assert e["from"] < e["to"] and e["from"] in dates and e["to"] in dates and 0 <= e["segment"] < n
         assert e["after"] <= e["before"] / 2 + 0.05

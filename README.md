@@ -68,7 +68,10 @@ tests/                      uv run pytest: calculations and the published data
 - **Clean-up detection:** a stretch with at least 20% cover that drops 15+ points to half or less
   within 3 weeks, stays low, outside the monsoon, is labelled by cause: "rain" (25 mm or more in
   between, daily rainfall from NASA POWER, public domain), "river-wide" (30%+ of stretches with weed
-  dropped together: flow or wind) or "probable clean-up". Days until it grew back to half are tracked.
+  dropped together: flow or wind), "drift" (a stretch within 1 km gained at least half the lost
+  cover over the same days: the mat moved; about 1 in 5 drops) or "probable clean-up". Neighbouring
+  clean-ups over overlapping days are one operation, counted once (ward table, alerts). Days until
+  weed grew back to half are tracked.
 - **Landsat check:** `crosscheck_landsat.py` measures the same pixels (at least 20 m inside the river)
   from Landsat 8/9 within a day of a Sentinel-2 image, both as covered shares of pixels. Landsat's
   pixels are 3x coarser, so if coarse pixels inflated the old count, the two should now agree on the

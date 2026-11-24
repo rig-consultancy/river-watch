@@ -3,6 +3,7 @@
 
 const STRINGS = {
   en: {
+    cause_drift: "drifted: a nearby stretch gained the weed",
     w_title: "Ward league table",
     w_by_now: "Weed now",
     w_by_change: "Change in a year",
@@ -419,6 +420,7 @@ const STRINGS = {
   },
 
   mr: {
+    cause_drift: "वाहून गेली: जवळच्या भागात जलपर्णी वाढली",
     w_title: "प्रभागनिहाय क्रमवारी",
     w_by_now: "सध्याची जलपर्णी",
     w_by_change: "वर्षभरातील बदल",
