@@ -14,6 +14,7 @@ const dayMs = 864e5;
 const toT = (d) => new Date(d + "T00:00:00").getTime();
 
 let map, segLayer, riverLine, pendingFit = false, baseLayers = {}, current, riverIndex, idx = 0, playTimer = null, listMode = "worst", selected = null;
+let status = null; // when the automatic update last checked for new images (web/status.json, absent locally)
 const state = { lang: "en", region: "all", ward: "" };
 
 // ---------- language ----------
@@ -795,13 +796,34 @@ function setLang(lang) {
   if (current) { fillRiverSelect(); fillRegionSelect(); fillWardSelect(); renderAll(false); }
 }
 
-function renderAll(fit) {
-  $("meta").textContent = t("meta", { date: fmtDate(current.latest_date), n: nf(current.series.length, 0) });
-  // Outside the monsoon a clear image arrives every few days: a much older one means the
-  // automatic update has stopped, so say so rather than show old figures as current.
+// "12 minutes ago", in the page's language.
+function ago(iso) {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 6e4);
+  const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: "auto" });
+  return min < 60 ? rtf.format(-min, "minute") : min < 48 * 60 ? rtf.format(-Math.round(min / 60), "hour")
+    : rtf.format(-Math.round(min / 1440), "day");
+}
+
+// The update line and its warning. The update checks for new images at least twice a day; if it
+// has not for 36 hours it has stopped. Otherwise an old image just means none newer was published
+// (or it was cloudy): say which, rather than show old figures as current or cry wolf.
+function drawStatus() {
+  $("meta").textContent = t("meta", { date: fmtDate(current.latest_date), n: nf(current.series.length, 0) }) +
+    (status?.checked ? " · " + t("checked", { ago: ago(status.checked) }) : "");
   const age = Math.floor((Date.now() - toT(current.latest_date)) / dayMs), month = new Date().getMonth() + 1;
-  $("stale").hidden = age <= 12 || (month >= 6 && month <= 9);
-  $("stale").textContent = t("stale", { n: nf(age, 0), date: fmtDate(current.latest_date) });
+  const checkedH = status?.checked ? (Date.now() - new Date(status.checked).getTime()) / 36e5 : null;
+  const old = age > 12 && !(month >= 6 && month <= 9), vars = { n: nf(age, 0), date: fmtDate(current.latest_date) };
+  const el = $("stale");
+  if (checkedH != null && checkedH > 36) {
+    el.className = "stale"; el.hidden = false; el.textContent = t("stale_stopped", { ...vars, ago: ago(status.checked) });
+  } else if (old) {
+    el.className = status ? "stale note" : "stale"; el.hidden = false;
+    el.textContent = status ? t("stale_no_images", { ...vars, ago: ago(status.checked) }) : t("stale", vars);
+  } else el.hidden = true;
+}
+
+function renderAll(fit) {
+  drawStatus();
   drawLegend();
   drawTiles();
   drawSegments(fit);
@@ -818,16 +840,42 @@ function renderAll(fit) {
 }
 
 // ---------- load ----------
-async function loadRiver(id) {
+// refresh: new data for the river on screen; keep the view (area, ward, stretch, map position) and
+// the slider's date, or move it to the new latest image if it was on the latest.
+async function loadRiver(id, refresh = false) {
+  const prev = refresh && current ? { date: current.segment_history.dates[idx], atLatest: idx === current.segment_history.dates.length - 1 } : null;
   stopPlay();
   current = await fetch(`data/${id}.json`, { cache: "no-cache" }).then((r) => r.json());
   current.regions ??= [];
-  idx = current.segment_history.dates.length - 1;
-  $("slider").max = idx;
+  const dates = current.segment_history.dates;
+  idx = prev && !prev.atLatest && dates.includes(prev.date) ? dates.indexOf(prev.date) : dates.length - 1;
+  $("slider").max = dates.length - 1;
   fillRegionSelect();
   fillWardSelect();
   if (selected != null && !current.segments.features.some((f) => f.properties.id === selected)) selected = null;
-  renderAll(true);
+  renderAll(!refresh);
+}
+
+// Live: every 5 minutes (and when the tab comes back into view) look for a newer update and redraw
+// in place. Two small files are read; the river's data only when its version changed.
+async function checkForUpdate() {
+  try {
+    status = await fetch("status.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null));
+  } catch { status = null; }
+  try {
+    const idxNew = await fetch("data/index.json", { cache: "no-cache" }).then((r) => r.json());
+    const id = $("river").value, was = riverIndex.rivers.find((r) => r.id === id), now = idxNew.rivers.find((r) => r.id === id);
+    riverIndex = idxNew;
+    if (now && was && (now.version !== was.version || now.latest_date !== was.latest_date)) {
+      await loadRiver(id, true);
+      const note = $("live");
+      note.textContent = t("refreshed", { date: fmtDate(current.latest_date) });
+      note.hidden = false;
+      setTimeout(() => (note.hidden = true), 15000);
+      return;
+    }
+  } catch { /* offline for a moment: try again next time */ }
+  if (current) drawStatus();
 }
 
 async function main() {
@@ -862,7 +910,11 @@ async function main() {
   const wanted = q.get("river");
   if (wanted && riverIndex.rivers.some((r) => r.id === wanted)) sel.value = wanted;
   sel.addEventListener("change", () => { selected = null; state.region = "all"; state.ward = ""; syncUrl(); loadRiver(sel.value); });
+  status = await fetch("status.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   await loadRiver(sel.value);
+  setInterval(checkForUpdate, 5 * 60e3);
+  setInterval(() => current && drawStatus(), 60e3); // keep "checked N minutes ago" true
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
   let rt;
   addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(drawCharts, 150); });
 }

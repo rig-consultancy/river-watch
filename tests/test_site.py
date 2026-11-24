@@ -5,12 +5,13 @@ is exactly what the code produces from the committed history.
   SITE_URL=https://… uv run pytest -k live   also checks the deployed site (CI does after deploy)
 """
 
+import hashlib
 import json
 import math
 import os
 import re
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,10 @@ def test_dynamic_text_keys_cover_every_value_the_pipeline_writes():
 def test_index_lists_the_configured_rivers_in_config_order():
     index = json.loads((WEB / "data/index.json").read_text())
     assert [r["id"] for r in index["rivers"]] == RIVERS  # the first one is what the site opens on
+    # Open dashboards reload a river when its version changes.
+    for r in index["rivers"]:
+        text = (WEB / f"data/{r['id']}.json").read_text()
+        assert r["version"] == hashlib.sha1(text.encode()).hexdigest()[:12], r["id"]
 
 
 def finite(x):
@@ -213,14 +218,19 @@ def test_live_site_serves_this_commit():
             assert r.text == (WEB / page).read_text(), f"{page} on the site differs from this commit"
     index = requests.get(base + "data/index.json", timeout=30).json()
     assert [r["id"] for r in index["rivers"]] == RIVERS
+    # The update checks for new images at least twice a day; open pages show when it last did.
+    status = requests.get(base + "status.json", timeout=30).json()
+    hours = (datetime.now(timezone.utc) - datetime.fromisoformat(status["checked"])).total_seconds() / 3600
+    assert hours <= 36, f"the automatic update last checked {hours:.0f} hours ago"
     for river in RIVERS:
         live = requests.get(base + f"data/{river}.json", timeout=60).json()
         local = json.loads((WEB / f"data/{river}.json").read_text())
         assert live["latest_date"] == local["latest_date"] and live["series"] == local["series"], river
-        # Outside the monsoon a clear image arrives every few days; 12 days without one means the
-        # scheduled update has stopped.
+        # A newer image may simply not be published yet (ESA had none of Pune for 10+ days in Nov 2026),
+        # so a stalled update is judged by status.json below; a month without one outside the monsoon
+        # is still worth a failure.
         days_old = (date.today() - date.fromisoformat(live["latest_date"])).days
-        assert days_old <= 12 or date.today().month in (6, 7, 8, 9), f"{river}: newest image is {days_old} days old"
+        assert days_old <= 30 or date.today().month in (6, 7, 8, 9), f"{river}: newest image is {days_old} days old"
         checked = (date.today() - date.fromisoformat(live["landsat_check"]["checked"])).days
         assert checked <= 40, f"{river}: Landsat cross-check last ran {checked} days ago (monthly run failing?)"
 

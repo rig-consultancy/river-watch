@@ -105,6 +105,19 @@ jobs:
           git pull --rebase
           git push
 
+      # When the dashboard last checked for new images (not committed: it changes every run). Open
+      # pages read it to tell "no new image published yet" from "the update has stopped".
+      - name: Write update status
+        run: |
+          python3 - <<'PY'
+          import json, datetime
+          from pathlib import Path
+          idx = json.loads(Path("web/data/index.json").read_text())
+          Path("web/status.json").write_text(json.dumps({
+              "checked": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="minutes"),
+              "rivers": {r["id"]: r["latest_date"] for r in idx["rivers"]}}))
+          PY
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: web

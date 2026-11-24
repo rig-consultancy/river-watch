@@ -4,19 +4,22 @@
    "id": "mula-mutha-pune",
    "name": "Mula-Mutha (Pune)",
    "name_mr": "मुळा-मुठा (पुणे)",
-   "latest_date": "2026-11-14"
+   "latest_date": "2026-11-14",
+   "version": "19f0efe23304"
   },
   {
    "id": "pawana-pcmc",
    "name": "Pawana (Pimpri-Chinchwad)",
    "name_mr": "पवना (पिंपरी-चिंचवड)",
-   "latest_date": "2026-11-14"
+   "latest_date": "2026-11-14",
+   "version": "c85074bdb2d0"
   },
   {
    "id": "indrayani-pcmc",
    "name": "Indrayani (Dehu-Alandi)",
    "name_mr": "इंद्रायणी (देहू-आळंदी)",
-   "latest_date": "2026-11-14"
+   "latest_date": "2026-11-14",
+   "version": "8a86c78204f5"
   }
  ]
 }

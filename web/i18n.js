@@ -3,6 +3,10 @@
 
 const STRINGS = {
   en: {
+    checked: "checked for new images {ago}",
+    stale_stopped: "The automatic update last ran {ago}: it may have stopped. Figures are as of the image of {date}.",
+    stale_no_images: "No new clear satellite image of the river since {date} ({n} days): none newer has been published yet, or it was too cloudy. Checked {ago}.",
+    refreshed: "Updated just now with the image of {date}.",
     stale: "The newest satellite image is {n} days old: the automatic update may have stopped. Figures are as of {date}.",
     tab_alerts: "Alerts",
     tab_muddy: "Muddier",
@@ -397,6 +401,10 @@ const STRINGS = {
   },
 
   mr: {
+    checked: "नवीन प्रतिमांसाठी {ago} तपासले",
+    stale_stopped: "स्वयंचलित अद्ययावत शेवटचे {ago} चालले: ते थांबले असावे. आकडे {date} च्या प्रतिमेपर्यंतचे आहेत.",
+    stale_no_images: "{date} पासून ({n} दिवस) नदीची नवी स्वच्छ उपग्रह प्रतिमा नाही: नवी प्रतिमा अजून प्रकाशित झालेली नाही, किंवा ढगाळ होती. {ago} तपासले.",
+    refreshed: "{date} च्या प्रतिमेसह आत्ताच अद्ययावत केले.",
     stale: "सर्वात नवी उपग्रह प्रतिमा {n} दिवस जुनी आहे: स्वयंचलित अद्ययावत थांबले असावे. आकडे {date} पर्यंतचे आहेत.",
     tab_alerts: "सूचना",
     tab_muddy: "जास्त गढूळ",

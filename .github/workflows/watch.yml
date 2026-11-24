@@ -1,0 +1,41 @@
+# Every 2 hours: a few seconds' check of the Sentinel-2 catalogue. When a new image of a river is
+# published, the full update (update.yml) is started right away instead of waiting for its next
+# scheduled run, so new images reach the dashboard within about 2 hours.
+name: Watch for new images
+
+on:
+  schedule:
+    - cron: "15 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write   # to start update.yml
+  contents: read
+
+concurrency:
+  group: watch
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3  # no moving v10 tag is published
+
+      - name: Look for images the pipeline has not seen
+        id: check
+        run: uv run python pipeline/check_new_images.py
+
+      - name: Start the update
+        if: steps.check.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Already running or queued: it will pick the image up.
+          if gh run list --workflow update.yml --json status -q '.[] | select(.status != "completed")' | grep -q .; then
+            echo "update already running"; exit 0
+          fi
+          gh workflow run update.yml

@@ -1148,19 +1148,25 @@ def write_web(river, cfg, segments, history, area):
             return {**o, "updated": None, "segments": feats}
         if comparable(json.loads(out_path.read_text())) == comparable(json.loads(text)):
             print("  no new data; dashboard unchanged")
-            return
-    out_path.write_text(text)
+            text = out_path.read_text()  # keep the published file (and so its version)
+        else:
+            out_path.write_text(text)
+    else:
+        out_path.write_text(text)
 
     index_path = web / "index.json"
     index = json.loads(index_path.read_text()) if index_path.exists() else {"rivers": []}
     index["rivers"] = [r for r in index["rivers"] if r["id"] != river["id"]]
+    # version: changes whenever the river's data does, so open dashboards know to reload it.
     index["rivers"].append({"id": river["id"], "name": river["name"], "name_mr": river.get("name_mr"),
-                            "latest_date": dates[-1]})
+                            "latest_date": dates[-1], "version": hashlib.sha1(text.encode()).hexdigest()[:12]})
     # Same order as config/rivers.yaml: the first river is the one the dashboard opens on.
     order = [r["id"] for r in cfg["rivers"]]
     index["rivers"].sort(key=lambda r: order.index(r["id"]) if r["id"] in order else len(order))
-    index_path.write_text(json.dumps(index, indent=1, ensure_ascii=False))
-    print(f"  wrote web/data/{river['id']}.json ({len(features)} segments, {len(dates)} dates)")
+    new_index = json.dumps(index, indent=1, ensure_ascii=False)
+    if not index_path.exists() or index_path.read_text() != new_index:
+        index_path.write_text(new_index)
+    print(f"  web/data/{river['id']}.json: {len(features)} segments, {len(dates)} dates")
 
 
 SITE = "https://rig-consultancy.github.io/river-watch/"
