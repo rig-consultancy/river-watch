@@ -6,7 +6,7 @@
    "name_mr": "मुळा-मुठा (पुणे)",
    "kind": "river",
    "latest_date": "2026-11-24",
-   "version": "e66c167ff576"
+   "version": "92ae1e0cf10b"
   },
   {
    "id": "pawana-pcmc",
@@ -14,7 +14,7 @@
    "name_mr": "पवना (पिंपरी-चिंचवड)",
    "kind": "river",
    "latest_date": "2026-11-24",
-   "version": "02de94ff1d79"
+   "version": "49dcc9585a35"
   },
   {
    "id": "indrayani-pcmc",
@@ -22,7 +22,7 @@
    "name_mr": "इंद्रायणी (देहू-आळंदी)",
    "kind": "river",
    "latest_date": "2026-11-24",
-   "version": "c0ab8f37265c"
+   "version": "464665a42e40"
   },
   {
    "id": "khadakwasla-reservoir",
@@ -30,7 +30,7 @@
    "name_mr": "खडकवासला जलाशय",
    "kind": "lake",
    "latest_date": "2026-11-24",
-   "version": "e0691292ad27"
+   "version": "eaa17b629e2b"
   },
   {
    "id": "pashan-lake",

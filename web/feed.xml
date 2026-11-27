@@ -5,8 +5,15 @@
   <subtitle>Weed above the alert level, sudden spread and probable clean-ups on Pune's rivers, from Sentinel-2</subtitle>
   <link href="https://rig-consultancy.github.io/river-watch/"/>
   <link rel="self" href="https://rig-consultancy.github.io/river-watch/feed.xml"/>
-  <updated>2026-11-14T00:00:00Z</updated>
+  <updated>2026-11-24T00:00:00Z</updated>
   <author><name>River Watch</name></author>
+  <entry>
+    <id>tag:rig-consultancy.github.io,2026:river-watch/indrayani-pcmc/cleanup/30/2026-11-24</id>
+    <title>Indrayani (Dehu-Alandi), Near More Wasti: probable clean-up (11.7% → 0.1%)</title>
+    <updated>2026-11-24T00:00:00Z</updated>
+    <link href="https://rig-consultancy.github.io/river-watch/?river=indrayani-pcmc&amp;stretch=31"/>
+    <summary>probable clean-up (11.7% → 0.1%) (2026-11-14 to 2026-11-24). इंद्रायणी (देहू-आळंदी), मोरे वसती जवळ: संभाव्य स्वच्छता (11.7% → 0.1%).</summary>
+  </entry>
   <entry>
     <id>tag:rig-consultancy.github.io,2026:river-watch/indrayani-pcmc/above/65/2026-11-14</id>
     <title>Indrayani (Dehu-Alandi), Near Sule gaon: weed above 15% (4.1% → 29.0%)</title>
